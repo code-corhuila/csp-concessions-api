@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: concessions-api
+  lifecycle:
+    timeout-per-shutdown-phase: 20s   # graceful shutdown: in-flight requests may finish for 20 s
+  jackson:
+    serialization:
+      # concessions-service.yaml declares every instant as format: date-time: an instant leaves this
+      # service as ISO-8601, never as the number of an epoch.
+      write-dates-as-timestamps: false
+server:
+  port: ${PORT:8085}
+  servlet:
+    # concessions-service.yaml opens with this base: the service owns its prefix and answers
+    # /health behind it, so the same process works with and without the gateway.
+    context-path: /api/v1/concessions
+  shutdown: graceful                  # stop accepting new requests, let the running ones finish
+  # Explicit capacity limits and their values (Norma 5.3.10): an undeclared default means "no limit".
+  tomcat:
+    connection-timeout: 5s            # time to receive the request line and headers
+    keep-alive-timeout: 60s           # idle connection
+    threads:
+      max: 200                        # concurrent requests before the rest queue
+logging:
+  structured:
+    format:
+      console: ecs                    # one JSON object per line; the MDC adds the correlation id
