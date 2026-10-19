@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>co.edu.corhuila.csp</groupId>
+    <artifactId>concessions</artifactId>
+    <version>0.1.0</version>
+  </parent>
+
+  <artifactId>concessions-adapters</artifactId>
+
+  <!-- Input adapters (HTTP) and output adapters (persistence). The dependency of each
+       adapter arrives with the Pull Request that introduces it. -->
+  <dependencies>
+    <dependency>
+      <groupId>co.edu.corhuila.csp</groupId>
+      <artifactId>concessions-core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>
