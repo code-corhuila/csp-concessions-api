@@ -10,12 +10,17 @@ import co.edu.corhuila.csp.concessions.adapter.in.http.JwtAuthenticationFilter;
 import co.edu.corhuila.csp.concessions.application.port.in.ProductUseCases;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.ApplicationContext;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -76,6 +81,23 @@ class ConcessionsApplicationTests {
     void theUseCasesAreWiredWithTheirPortsAndTheirClock() {
         assertNotNull(context.getBean(ProductUseCases.class));
         assertNotNull(context.getBean(Clock.class));
+    }
+
+    @Test
+    void theValidationMessagesAreInEnglishWhateverTheLanguageOfTheClient() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Accept-Language", "es");
+        headers.set("Authorization", "Bearer "
+                + JWT_KEY.token("11111111-1111-4111-8111-111111111111", List.of("concessions:product:write")));
+        headers.set("Idempotency-Key", "0c9a3c3e-5f0b-4b8e-8d3a-2a6d1f4e9b71");
+
+        ResponseEntity<String> answer = rest.exchange("/products", HttpMethod.POST,
+                new HttpEntity<>("{\"name\":\"\",\"price\":-1}", headers), String.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, answer.getStatusCode(), answer.getBody());
+        assertTrue(answer.getBody().contains("must not be blank"), answer.getBody());
+        assertTrue(answer.getBody().contains("must be greater than or equal to 0"), answer.getBody());
     }
 
     @Test
