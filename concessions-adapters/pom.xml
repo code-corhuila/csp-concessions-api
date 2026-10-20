@@ -31,6 +31,16 @@
       <artifactId>nimbus-jose-jwt</artifactId>
       <version>9.48</version>
     </dependency>
+    <!-- Persistence adapter: pool, template and the PostgreSQL driver. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
