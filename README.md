@@ -32,7 +32,8 @@ structure for now; the stories (HU-CONCESSIONS-001 to 007) arrive one Pull Reque
 
 ## Build, test and run
 
-Requirements: Java 21 and Maven 3.9.
+Requirements: Java 21 and Maven 3.9. The persistence tests need PostgreSQL with the migrations of `csp-concessions-db`: set
+`TEST_DATABASE_URL` (for example `jdbc:postgresql://localhost:5432/csp?user=...&password=...`) or they are skipped.
 
 ```bash
 mvn -B verify                                  # compile and run every test
@@ -55,11 +56,17 @@ The routes are served under `/api/v1/concessions`, the base `concessions-service
 | Route | Answer |
 |---|---|
 | `GET /health` | Liveness, independent of PostgreSQL and RabbitMQ |
+| `GET /health/ready` | Readiness: `503` while PostgreSQL cannot be reached |
+| `POST /products` | Creates a `DRAFT` product (needs `concessions:product:write`): `201`, `200` when the `Idempotency-Key` replays, `400`, `401`, `403`, `409` |
+| `GET /products` | Page of products (`page`, `limit` 1 to 100): an administrator sees every status, any other caller only the `PUBLISHED` ones |
+| `PATCH /products/{productId}` | Moves the status (needs `concessions:product:write`): `DRAFT` to `PUBLISHED`, `PUBLISHED` to `INACTIVE`, `INACTIVE` to `PUBLISHED`; anything else is `409` |
+
+The token carries the permissions in its `permissions` claim; an `ADMIN` has `concessions:product:write`. A product created without a
+category is stored as `UNCATEGORIZED` (the contract makes it optional, the schema does not).
 
 ## What is missing
 
-The persistence adapter with readiness, and every route of the
-products, combos, inventory and orders.
+Combos, stock, orders and the stock history (HU-CONCESSIONS-002 to 005 and 007); the status route also covers the endpoint of HU-CONCESSIONS-006.
 
 ## Related repositories
 
