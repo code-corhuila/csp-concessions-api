@@ -13,6 +13,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
 
 /**
  * A throwaway RSA key pair for the tests: no key material of the service is committed to this
@@ -51,9 +52,15 @@ final class RsaTestKey {
      * of {@code csp-infra} hands out until the identity service exists.
      */
     String token(String subject) {
+        return token(subject, List.of());
+    }
+
+    /** The same token with the permissions claim that the identity service puts in it. */
+    String token(String subject, List<String> permissions) {
         try {
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
                     .subject(subject)
+                    .claim("permissions", permissions)
                     .expirationTime(new Date(System.currentTimeMillis() + 60_000))
                     .build();
             SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), claims);
