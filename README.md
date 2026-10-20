@@ -41,6 +41,10 @@ mvn -B -pl concessions-app -am package -DskipTests
 java -jar concessions-app/target/concessions-app-0.1.0.jar   # starts on PORT, 8085 by default
 ```
 
+The service **refuses to start without the public key** that validates the tokens (Norma 5.3.7): set
+`JWT_PUBLIC_KEY` (the PEM) or `JWT_PUBLIC_KEY_FILE` (its path). `SERVICE_SUBJECTS` (default `csp-worker`) lists the `sub` of
+the service tokens allowed on `/internal/` routes; a client token receives `403` there and a service token receives `403` anywhere else.
+Every error is the envelope of the contract (`error`, `message`, `details`, `traceId`) and every answer carries `X-Correlation-Id`.
 Every variable the service reads is listed in `.env.example`; never commit a real `.env`.
 
 ## API
@@ -54,7 +58,7 @@ The routes are served under `/api/v1/concessions`, the base `concessions-service
 
 ## What is missing
 
-Token validation (RS256), the error envelope, the persistence adapter with readiness, and every route of the
+The persistence adapter with readiness, and every route of the
 products, combos, inventory and orders.
 
 ## Related repositories
