@@ -3,6 +3,10 @@ spring:
     name: concessions-api
   lifecycle:
     timeout-per-shutdown-phase: 20s   # graceful shutdown: in-flight requests may finish for 20 s
+  web:
+    # The contract answers in English: validation messages never depend on the client or on the machine.
+    locale: en
+    locale-resolver: fixed
   jackson:
     serialization:
       # concessions-service.yaml declares every instant as format: date-time: an instant leaves this
