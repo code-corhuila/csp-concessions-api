@@ -48,6 +48,16 @@ the service tokens allowed on `/internal/` routes; a client token receives `403`
 Every error is the envelope of the contract (`error`, `message`, `details`, `traceId`) and every answer carries `X-Correlation-Id`.
 Every variable the service reads is listed in `.env.example`; never commit a real `.env`.
 
+With Docker, from the root of the repository (the image reads the key from a mounted file):
+
+```bash
+docker build -f deploy/Dockerfile -t csp-concessions-api .
+docker run --rm -p 8085:8085 -e JWT_PUBLIC_KEY_FILE=/run/jwt/public.pem -v /path/to/keys:/run/jwt:ro csp-concessions-api
+```
+
+In the platform, `csp-infra-postgres` includes `deploy/compose.yml`, which exposes the port on the `platform` network
+without publishing it.
+
 ## API
 
 The routes are served under `/api/v1/concessions`, the base `concessions-service.yaml` opens with
