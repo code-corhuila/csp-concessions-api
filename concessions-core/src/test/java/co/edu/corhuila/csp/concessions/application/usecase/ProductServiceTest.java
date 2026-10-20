@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.edu.corhuila.csp.concessions.application.port.in.CreateProductInput;
+import co.edu.corhuila.csp.concessions.application.port.out.CreateProductResult;
+import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConflictException;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductPage;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductRepository;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidProductException;
@@ -36,13 +38,17 @@ class ProductServiceTest {
         service = new ProductService(repository, Clock.fixed(NOW, ZoneOffset.UTC), UUID::randomUUID);
     }
 
+    private Product created(CreateProductInput input) {
+        return service.create(input, UUID.randomUUID().toString()).product();
+    }
+
     private static CreateProductInput popcorn() {
         return new CreateProductInput("Popcorn", "Large", "SNACK", 1500, 10);
     }
 
     @Test
     void createSavesADraftProduct() {
-        Product product = service.create(popcorn());
+        Product product = created(popcorn());
 
         assertEquals(ProductStatus.DRAFT, product.status());
         assertEquals(product, repository.findById(product.id()).orElseThrow());
@@ -50,18 +56,38 @@ class ProductServiceTest {
     }
 
     @Test
+    void repeatingTheKeyWithTheSameRequestReturnsTheOriginalProductAndCreatesNothing() {
+        CreateProductResult first = service.create(popcorn(), "key-0000001");
+        CreateProductResult replay = service.create(popcorn(), "key-0000001");
+
+        assertEquals(false, first.replayed());
+        assertEquals(true, replay.replayed());
+        assertEquals(first.product(), replay.product());
+        assertEquals(1, repository.products.size());
+    }
+
+    @Test
+    void theSameKeyWithAnotherRequestIsAConflict() {
+        service.create(popcorn(), "key-0000001");
+
+        assertThrows(IdempotencyKeyConflictException.class,
+                () -> service.create(new CreateProductInput("Soda", null, "DRINK", 800, 5), "key-0000001"));
+        assertEquals(1, repository.products.size());
+    }
+
+    @Test
     void anInvalidProductIsRejectedAndNothingIsSaved() {
         assertThrows(InvalidProductException.class,
-                () -> service.create(new CreateProductInput(" ", null, "SNACK", 100, 0)));
+                () -> service.create(new CreateProductInput(" ", null, "SNACK", 100, 0), "key-0000001"));
         assertThrows(InvalidProductException.class,
-                () -> service.create(new CreateProductInput("Soda", null, "DRINK", -5, 0)));
+                () -> service.create(new CreateProductInput("Soda", null, "DRINK", -5, 0), "key-0000002"));
 
         assertTrue(repository.products.isEmpty());
     }
 
     @Test
     void publishMakesTheProductAvailableForOrders() {
-        Product created = service.create(popcorn());
+        Product created = created(popcorn());
 
         Product published = service.changeStatus(created.id(), ProductStatus.PUBLISHED);
 
@@ -71,7 +97,7 @@ class ProductServiceTest {
 
     @Test
     void deactivateAndReactivateFollowTheLifecycle() {
-        Product created = service.create(popcorn());
+        Product created = created(popcorn());
         service.changeStatus(created.id(), ProductStatus.PUBLISHED);
 
         assertEquals(ProductStatus.INACTIVE, service.changeStatus(created.id(), ProductStatus.INACTIVE).status());
@@ -80,7 +106,7 @@ class ProductServiceTest {
 
     @Test
     void anInvalidTransitionChangesNothing() {
-        Product created = service.create(popcorn());
+        Product created = created(popcorn());
 
         assertThrows(InvalidStatusTransitionException.class,
                 () -> service.changeStatus(created.id(), ProductStatus.INACTIVE));
@@ -89,7 +115,7 @@ class ProductServiceTest {
 
     @Test
     void aProductCannotGoBackToDraft() {
-        Product created = service.create(popcorn());
+        Product created = created(popcorn());
         service.changeStatus(created.id(), ProductStatus.PUBLISHED);
 
         assertThrows(InvalidStatusTransitionException.class,
@@ -105,8 +131,8 @@ class ProductServiceTest {
 
     @Test
     void anAdministratorSeesEveryStatusAndAClientOnlyThePublishedOnes() {
-        Product draft = service.create(popcorn());
-        Product published = service.create(new CreateProductInput("Soda", null, "DRINK", 800, 5));
+        Product draft = created(popcorn());
+        Product published = created(new CreateProductInput("Soda", null, "DRINK", 800, 5));
         service.changeStatus(published.id(), ProductStatus.PUBLISHED);
 
         assertEquals(2, service.list(1, 10, false).total());
@@ -119,7 +145,7 @@ class ProductServiceTest {
     @Test
     void theLimitBoundsThePage() {
         for (int n = 0; n < 5; n++) {
-            service.create(new CreateProductInput("Item " + n, null, "SNACK", 100, 0));
+            created(new CreateProductInput("Item " + n, null, "SNACK", 100, 0));
         }
 
         assertEquals(2, service.list(1, 2, false).items().size());
@@ -133,6 +159,21 @@ class ProductServiceTest {
     private static final class FakeProductRepository implements ProductRepository {
 
         final Map<UUID, Product> products = new LinkedHashMap<>();
+        final Map<String, String[]> keys = new LinkedHashMap<>();
+
+        @Override
+        public CreateProductResult create(Product product, String idempotencyKey, String requestHash) {
+            String[] stored = keys.get(idempotencyKey);
+            if (stored == null) {
+                keys.put(idempotencyKey, new String[] {requestHash, product.id().toString()});
+                products.put(product.id(), product);
+                return new CreateProductResult(product, false);
+            }
+            if (!stored[0].equals(requestHash)) {
+                throw new IdempotencyKeyConflictException();
+            }
+            return new CreateProductResult(products.get(UUID.fromString(stored[1])), true);
+        }
 
         @Override
         public Product save(Product product) {

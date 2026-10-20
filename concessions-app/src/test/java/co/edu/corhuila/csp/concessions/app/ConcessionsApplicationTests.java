@@ -7,7 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import co.edu.corhuila.csp.concessions.adapter.in.http.CorrelationIdFilter;
 import co.edu.corhuila.csp.concessions.adapter.in.http.HealthController;
 import co.edu.corhuila.csp.concessions.adapter.in.http.JwtAuthenticationFilter;
+import co.edu.corhuila.csp.concessions.application.port.in.ProductUseCases;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Clock;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -68,5 +70,18 @@ class ConcessionsApplicationTests {
 
         assertEquals(HttpStatus.UNAUTHORIZED, answer.getStatusCode());
         assertTrue(answer.getBody().contains("\"error\":\"UNAUTHORIZED\""), answer.getBody());
+    }
+
+    @Test
+    void theUseCasesAreWiredWithTheirPortsAndTheirClock() {
+        assertNotNull(context.getBean(ProductUseCases.class));
+        assertNotNull(context.getBean(Clock.class));
+    }
+
+    @Test
+    void theServiceStartsWithoutPostgresAndReadinessSaysSo() {
+        ResponseEntity<String> ready = rest.getForEntity("/health/ready", String.class);
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ready.getStatusCode(), ready.getBody());
     }
 }

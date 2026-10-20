@@ -7,7 +7,14 @@ import java.util.UUID;
 /** Output port: where products are kept. The implementation belongs to an adapter. */
 public interface ProductRepository {
 
-    /** Inserts or updates the product and returns what was stored. */
+    /**
+     * Inserts the product together with its idempotency key in one transaction. When the key is
+     * already stored with the same request hash, nothing is written and the original product is
+     * returned as a replay; with another hash it throws {@link IdempotencyKeyConflictException}.
+     */
+    CreateProductResult create(Product product, String idempotencyKey, String requestHash);
+
+    /** Updates an existing product and returns what was stored. */
     Product save(Product product);
 
     Optional<Product> findById(UUID id);

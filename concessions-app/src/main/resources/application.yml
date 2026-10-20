@@ -8,6 +8,15 @@ spring:
       # concessions-service.yaml declares every instant as format: date-time: an instant leaves this
       # service as ISO-8601, never as the number of an epoch.
       write-dates-as-timestamps: false
+  datasource:
+    # One database per domain (Annex J.5). The three variables are listed in .env.example.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/csp}
+    username: ${SPRING_DATASOURCE_USERNAME:concessions_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:change-me}
+    hikari:
+      maximum-pool-size: 10               # Annex C limits: size of the connection pool
+      connection-timeout: 5000            # Annex C limits: wait for a connection, 5 s
+      connection-init-sql: SET statement_timeout = '5s'   # Annex C limits: time per statement, 5 s
 server:
   port: ${PORT:8085}
   servlet:
