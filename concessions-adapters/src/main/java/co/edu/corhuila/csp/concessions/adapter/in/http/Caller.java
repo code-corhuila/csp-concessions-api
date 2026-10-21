@@ -7,8 +7,13 @@ import java.util.UUID;
 record Caller(UUID userId, Set<String> permissions) {
 
     static final String PRODUCT_WRITE = "concessions:product:write";
+    static final String COMBO_WRITE = "concessions:combo:write";
 
     boolean canWriteProducts() {
         return permissions.contains(PRODUCT_WRITE);
+    }
+
+    boolean canWriteCombos() {
+        return permissions.contains(COMBO_WRITE);
     }
 }
