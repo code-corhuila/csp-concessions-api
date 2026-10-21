@@ -1,7 +1,11 @@
 package co.edu.corhuila.csp.concessions.app;
 
+import co.edu.corhuila.csp.concessions.application.port.in.ComboUseCases;
 import co.edu.corhuila.csp.concessions.application.port.in.ProductUseCases;
+import co.edu.corhuila.csp.concessions.application.port.out.ComboRepository;
+import co.edu.corhuila.csp.concessions.application.port.out.ComponentProducts;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductRepository;
+import co.edu.corhuila.csp.concessions.application.usecase.ComboService;
 import co.edu.corhuila.csp.concessions.application.usecase.ProductService;
 import java.time.Clock;
 import java.util.UUID;
@@ -23,5 +27,10 @@ public class UseCaseConfiguration {
     @Bean
     ProductUseCases productUseCases(ProductRepository products, Clock clock) {
         return new ProductService(products, clock, UUID::randomUUID);
+    }
+
+    @Bean
+    ComboUseCases comboUseCases(ComboRepository combos, ComponentProducts components, Clock clock) {
+        return new ComboService(combos, components, clock, UUID::randomUUID);
     }
 }

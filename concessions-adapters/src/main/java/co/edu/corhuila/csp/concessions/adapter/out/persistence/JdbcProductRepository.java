@@ -43,7 +43,7 @@ public class JdbcProductRepository implements ProductRepository {
             SELECT product_id, request_hash FROM concessions.product_idempotency_key WHERE "key" = ?
             """;
 
-    private static final String SELECT_PRODUCT = """
+    static final String SELECT_PRODUCT = """
             SELECT id, name, description, category, price, available_stock, status, created_at, updated_at
             FROM concessions.product
             """;
@@ -101,7 +101,7 @@ public class JdbcProductRepository implements ProductRepository {
 
     @Override
     public Optional<Product> findById(UUID id) {
-        return jdbc.query(SELECT_PRODUCT + "WHERE id = ?", this::toProduct, id).stream().findFirst();
+        return jdbc.query(SELECT_PRODUCT + "WHERE id = ?", JdbcProductRepository::toProduct, id).stream().findFirst();
     }
 
     @Override
@@ -110,7 +110,7 @@ public class JdbcProductRepository implements ProductRepository {
         long total = jdbc.queryForObject("SELECT count(*) FROM concessions.product " + where, Long.class);
         List<Product> items = jdbc.query(
                 SELECT_PRODUCT + where + "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
-                this::toProduct, limit, (long) (page - 1) * limit);
+                JdbcProductRepository::toProduct, limit, (long) (page - 1) * limit);
         return new ProductPage(items, total);
     }
 
@@ -124,7 +124,7 @@ public class JdbcProductRepository implements ProductRepository {
         return OffsetDateTime.ofInstant(product.updatedAt(), ZoneOffset.UTC);
     }
 
-    private Product toProduct(ResultSet row, int rowNumber) throws SQLException {
+    static Product toProduct(ResultSet row, int rowNumber) throws SQLException {
         return new Product(row.getObject("id", UUID.class), row.getString("name"), row.getString("description"),
                 row.getString("category"), row.getLong("price"), row.getInt("available_stock"),
                 ProductStatus.valueOf(row.getString("status")),
