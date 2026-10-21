@@ -160,6 +160,35 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void thePermissionsOfTheTokenReachTheRequest() throws Exception {
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .subject(SUB)
+                .claim("permissions", java.util.List.of("concessions:product:write", "concessions:order:create"))
+                .expirationTime(new Date(System.currentTimeMillis() + 60_000))
+                .build();
+
+        MvcResult result = mockMvc.perform(get("/products")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER,
+                                "Bearer " + rs256Token(servicePrivateKey, claims)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertEquals(Set.of("concessions:product:write", "concessions:order:create"),
+                result.getRequest().getAttribute(JwtAuthenticationFilter.PERMISSIONS_ATTRIBUTE));
+    }
+
+    @Test
+    void aTokenWithoutPermissionsHasNone() throws Exception {
+        MvcResult result = mockMvc.perform(get("/products")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER,
+                                "Bearer " + rs256Token(servicePrivateKey, validClaims())))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertEquals(Set.of(), result.getRequest().getAttribute(JwtAuthenticationFilter.PERMISSIONS_ATTRIBUTE));
+    }
+
+    @Test
     void aServiceTokenCallsAnInternalOperation() throws Exception {
         String token = rs256Token(servicePrivateKey, claimsOf("csp-worker"));
 

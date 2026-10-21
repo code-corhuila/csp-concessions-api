@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.interfaces.RSAPublicKey;
 import java.text.ParseException;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -39,6 +40,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static final String AUTHORIZATION_HEADER = "Authorization";
     /** Request attribute with the authenticated user: the {@code sub} of the token. */
     public static final String USER_ID_ATTRIBUTE = "userId";
+    /** Request attribute with the permissions of the token ({@code permissions} claim, a set of strings). */
+    public static final String PERMISSIONS_ATTRIBUTE = "permissions";
 
     private static final String BEARER = "Bearer ";
     private static final Set<String> PUBLIC_PATHS = Set.of("/health", "/health/ready");
@@ -87,6 +90,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
         request.setAttribute(USER_ID_ATTRIBUTE, userId.get());
+        request.setAttribute(PERMISSIONS_ATTRIBUTE, permissionsOf(header.substring(BEARER.length()).trim()));
         chain.doFilter(request, response);
     }
 
@@ -138,6 +142,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return Optional.empty();
         }
         return Optional.of(subject);
+    }
+
+    /** The {@code permissions} claim of a token whose signature was already verified; empty when it has none. */
+    private Set<String> permissionsOf(String token) {
+        try {
+            List<String> permissions = SignedJWT.parse(token).getJWTClaimsSet().getStringListClaim("permissions");
+            return permissions == null ? Set.of() : Set.copyOf(permissions);
+        } catch (ParseException exception) {
+            return Set.of();
+        }
     }
 
     private boolean isServiceSubject(String subject) {
