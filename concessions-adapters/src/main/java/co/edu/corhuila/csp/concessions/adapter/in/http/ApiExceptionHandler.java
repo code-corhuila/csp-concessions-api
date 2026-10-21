@@ -1,6 +1,9 @@
 package co.edu.corhuila.csp.concessions.adapter.in.http;
 
 import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConflictException;
+import co.edu.corhuila.csp.concessions.domain.model.ComboComponentException;
+import co.edu.corhuila.csp.concessions.domain.model.ComboNotFoundException;
+import co.edu.corhuila.csp.concessions.domain.model.InvalidComboException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidProductException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.csp.concessions.domain.model.ProductNotFoundException;
@@ -83,6 +86,24 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidProductException.class)
     ResponseEntity<ErrorResponse> invalidProduct(InvalidProductException exception) {
         return answer(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", exception.getMessage(), null);
+    }
+
+    /** 400: the domain refused the values of the combo. */
+    @ExceptionHandler(InvalidComboException.class)
+    ResponseEntity<ErrorResponse> invalidCombo(InvalidComboException exception) {
+        return answer(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", exception.getMessage(), null);
+    }
+
+    /** 422: a component of the combo is a product that does not exist or, at publication, is not published. */
+    @ExceptionHandler(ComboComponentException.class)
+    ResponseEntity<ErrorResponse> invalidComponent(ComboComponentException exception) {
+        return answer(HttpStatus.UNPROCESSABLE_ENTITY, "BUSINESS_RULE_VIOLATION", exception.getMessage(), null);
+    }
+
+    /** 404: no combo with that id. */
+    @ExceptionHandler(ComboNotFoundException.class)
+    ResponseEntity<ErrorResponse> comboNotFound(ComboNotFoundException exception) {
+        return answer(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), null);
     }
 
     /** 404: no product with that id. */
