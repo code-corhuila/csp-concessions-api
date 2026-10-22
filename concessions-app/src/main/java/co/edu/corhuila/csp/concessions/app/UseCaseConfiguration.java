@@ -2,11 +2,14 @@ package co.edu.corhuila.csp.concessions.app;
 
 import co.edu.corhuila.csp.concessions.application.port.in.ComboUseCases;
 import co.edu.corhuila.csp.concessions.application.port.in.ProductUseCases;
+import co.edu.corhuila.csp.concessions.application.port.in.StockUseCases;
 import co.edu.corhuila.csp.concessions.application.port.out.ComboRepository;
 import co.edu.corhuila.csp.concessions.application.port.out.ComponentProducts;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductRepository;
+import co.edu.corhuila.csp.concessions.application.port.out.StockRepository;
 import co.edu.corhuila.csp.concessions.application.usecase.ComboService;
 import co.edu.corhuila.csp.concessions.application.usecase.ProductService;
+import co.edu.corhuila.csp.concessions.application.usecase.StockService;
 import java.time.Clock;
 import java.util.UUID;
 import org.springframework.context.annotation.Bean;
@@ -27,6 +30,11 @@ public class UseCaseConfiguration {
     @Bean
     ProductUseCases productUseCases(ProductRepository products, Clock clock) {
         return new ProductService(products, clock, UUID::randomUUID);
+    }
+
+    @Bean
+    StockUseCases stockUseCases(ProductRepository products, StockRepository stock, Clock clock) {
+        return new StockService(products, stock, clock, UUID::randomUUID);
     }
 
     @Bean

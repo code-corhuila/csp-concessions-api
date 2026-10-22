@@ -9,6 +9,12 @@ record Caller(UUID userId, Set<String> permissions) {
     static final String PRODUCT_WRITE = "concessions:product:write";
     static final String COMBO_WRITE = "concessions:combo:write";
 
+    static final String INVENTORY_WRITE = "concessions:inventory:write";
+
+    boolean canWriteInventory() {
+        return permissions.contains(INVENTORY_WRITE);
+    }
+
     boolean canWriteProducts() {
         return permissions.contains(PRODUCT_WRITE);
     }
