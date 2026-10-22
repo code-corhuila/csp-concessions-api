@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: concessions-api
+  lifecycle:
+    timeout-per-shutdown-phase: 20s   # graceful shutdown: in-flight requests may finish for 20 s
+  web:
+    # The contract answers in English: validation messages never depend on the client or on the machine.
+    locale: en
+    locale-resolver: fixed
+  jackson:
+    serialization:
+      # concessions-service.yaml declares every instant as format: date-time: an instant leaves this
+      # service as ISO-8601, never as the number of an epoch.
+      write-dates-as-timestamps: false
+  datasource:
+    # One database per domain (Annex J.5). The three variables are listed in .env.example.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/csp}
+    username: ${SPRING_DATASOURCE_USERNAME:concessions_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:change-me}
+    hikari:
+      maximum-pool-size: 10               # Annex C limits: size of the connection pool
+      connection-timeout: 5000            # Annex C limits: wait for a connection, 5 s
+      connection-init-sql: SET statement_timeout = '5s'   # Annex C limits: time per statement, 5 s
+server:
+  port: ${PORT:8085}
+  servlet:
+    # concessions-service.yaml opens with this base: the service owns its prefix and answers
+    # /health behind it, so the same process works with and without the gateway.
+    context-path: /api/v1/concessions
+  shutdown: graceful                  # stop accepting new requests, let the running ones finish
+  # Explicit capacity limits and their values (Norma 5.3.10): an undeclared default means "no limit".
+  tomcat:
+    connection-timeout: 5s            # time to receive the request line and headers
+    keep-alive-timeout: 60s           # idle connection
+    threads:
+      max: 200                        # concurrent requests before the rest queue
+logging:
+  structured:
+    format:
+      console: ecs                    # one JSON object per line; the MDC adds the correlation id

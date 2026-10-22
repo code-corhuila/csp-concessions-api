@@ -1,0 +1,18 @@
+# Build output
+target/
+*.class
+*.jar
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE and operating system
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
