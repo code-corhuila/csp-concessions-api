@@ -25,6 +25,8 @@ public record Product(
     public static final int NAME_MAX = 160;
     public static final int DESCRIPTION_MAX = 500;
     public static final int CATEGORY_MAX = 80;
+    /** The most units one stock movement may add or remove (Norma 5.3.10). */
+    public static final int MAX_STOCK_DELTA = 100_000;
 
     public Product {
         if (id == null || status == null || createdAt == null || updatedAt == null) {
@@ -63,6 +65,30 @@ public record Product(
             throw new InvalidStatusTransitionException("only a published product can be deactivated");
         }
         return withStatus(ProductStatus.INACTIVE, now);
+    }
+
+    /**
+     * Applies a stock receipt (positive) or withdrawal (negative). The balance never becomes negative
+     * ({@link InsufficientStockException}), the change is non-zero and at most {@link #MAX_STOCK_DELTA}
+     * ({@link InvalidStockMovementException}), and an inactive product, or a balance beyond what an
+     * {@code int} holds, is a {@link StockNotAdjustableException}. A refused change returns nothing.
+     */
+    public Product adjustStock(int quantityDelta, Instant now) {
+        if (quantityDelta == 0 || Math.abs((long) quantityDelta) > MAX_STOCK_DELTA) {
+            throw new InvalidStockMovementException(
+                    "the change is between 1 and " + MAX_STOCK_DELTA + " units, as a receipt or a withdrawal");
+        }
+        if (status == ProductStatus.INACTIVE) {
+            throw new StockNotAdjustableException("an inactive product does not take stock movements");
+        }
+        long balance = (long) availableStock + quantityDelta;
+        if (balance < 0) {
+            throw new InsufficientStockException("the available quantity is " + availableStock);
+        }
+        if (balance > Integer.MAX_VALUE) {
+            throw new StockNotAdjustableException("the available quantity would exceed " + Integer.MAX_VALUE);
+        }
+        return new Product(id, name, description, category, price, (int) balance, status, createdAt, now);
     }
 
     /** Only a published product can be ordered by a client. */
