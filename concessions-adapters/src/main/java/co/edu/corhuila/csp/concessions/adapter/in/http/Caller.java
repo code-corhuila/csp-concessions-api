@@ -10,9 +10,24 @@ record Caller(UUID userId, Set<String> permissions) {
     static final String COMBO_WRITE = "concessions:combo:write";
 
     static final String INVENTORY_WRITE = "concessions:inventory:write";
+    static final String ORDER_CREATE = "concessions:order:create";
+    static final String ORDER_READ_SELF = "concessions:order:read:self";
+    static final String ORDER_CANCEL_SELF = "concessions:order:cancel:self";
 
     boolean canWriteInventory() {
         return permissions.contains(INVENTORY_WRITE);
+    }
+
+    boolean canCreateOrders() {
+        return permissions.contains(ORDER_CREATE);
+    }
+
+    boolean canReadOwnOrders() {
+        return permissions.contains(ORDER_READ_SELF);
+    }
+
+    boolean canCancelOwnOrders() {
+        return permissions.contains(ORDER_CANCEL_SELF);
     }
 
     boolean canWriteProducts() {

@@ -43,7 +43,7 @@ java -jar concessions-app/target/concessions-app-0.1.0.jar   # starts on PORT, 8
 ```
 
 The service **refuses to start without the public key** that validates the tokens (Norma 5.3.7): set
-`JWT_PUBLIC_KEY` (the PEM) or `JWT_PUBLIC_KEY_FILE` (its path). `SERVICE_SUBJECTS` (default `csp-worker`) lists the `sub` of
+`JWT_PUBLIC_KEY` (the PEM) or `JWT_PUBLIC_KEY_FILE` (its path). `ORDER_HOLD_MINUTES` (default 15) is how long an order without a reservation keeps its stock. `SERVICE_SUBJECTS` (default `csp-worker`) lists the `sub` of
 the service tokens allowed on `/internal/` routes; a client token receives `403` there and a service token receives `403` anywhere else.
 Every error is the envelope of the contract (`error`, `message`, `details`, `traceId`) and every answer carries `X-Correlation-Id`.
 Every variable the service reads is listed in `.env.example`; never commit a real `.env`.
@@ -74,13 +74,18 @@ The routes are served under `/api/v1/concessions`, the base `concessions-service
 | `GET /combos` | Page of combos, like the products: an administrator sees every status, any other caller only the `PUBLISHED` ones |
 | `PATCH /combos/{comboId}` | Moves the status (needs `concessions:combo:write`), same lifecycle as a product; publishing is `422` unless every component is a `PUBLISHED` product |
 | `POST /stock/adjust` | Records a receipt (positive `quantityDelta`) or an adjustment (negative) of a product (needs `concessions:inventory:write`): `204`, also for a retry of the same `Idempotency-Key`; `400`, `401`, `403`, `404`, `409` (`INSUFFICIENT_STOCK`, or the key used with another body), `422` (inactive product). The balance never becomes negative |
+| `POST /orders` | Creates a `RESERVED` order of products and combos, optionally tied to a Booking `reservationId`, and takes its stock all or nothing (needs `concessions:order:create`): `201`, `200` when the `Idempotency-Key` replays, `400`, `401`, `403`, `409` (not enough stock, key reused with another body, reservation already ordered), `422` (an item is not available) |
+| `GET /orders`, `GET /orders/{orderId}` | The caller's own history (page, `limit` 1 to 100) and one of its orders (needs `concessions:order:read:self`); another user's order is `404` |
+| `POST /orders/{orderId}/cancel` | Cancels the caller's `RESERVED` order and releases its stock once (needs `concessions:order:cancel:self`): `204`, `409` for a confirmed order |
+| `POST /internal/orders/by-reservation/{reservationId}/confirm`, `.../release` | Called by `csp-worker` on `BookingConfirmed` and `ReservationExpired`: `204`, also when the reservation has no order or the order is already in that state, `409` for the opposite final state |
+| `POST /internal/orders/expire` | Called by `csp-worker` on a schedule: releases up to `batchSize` (1 to 500, default 100) orders without a reservation whose `ORDER_HOLD_MINUTES` ran out |
 
 The token carries the permissions in its `permissions` claim; an `ADMIN` has `concessions:product:write`, `concessions:combo:write` and `concessions:inventory:write`. A product created without a
 category is stored as `UNCATEGORIZED` (the contract makes it optional, the schema does not).
 
 ## What is missing
 
-Stock, orders and the stock history (HU-CONCESSIONS-003 to 005 and 007); the status route also covers the endpoint of HU-CONCESSIONS-006.
+The stock history (HU-CONCESSIONS-007) and the inbox of the events (HU-CONCESSIONS-005); the status route also covers the endpoint of HU-CONCESSIONS-006. The consumer of `BookingConfirmed` and `ReservationExpired` and the relay of the Concessions outbox are work of `csp-worker` (ADR-045): until they exist, an order tied to a reservation is settled by the client cancelling it.
 
 ## Related repositories
 

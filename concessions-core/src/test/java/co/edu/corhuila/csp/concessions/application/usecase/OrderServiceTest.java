@@ -244,6 +244,14 @@ class OrderServiceTest {
     }
 
     @Test
+    void thePageStartsAtOneAndTheLimitIsBetweenOneAndOneHundred() {
+        assertThrows(IllegalArgumentException.class, () -> service.list(CLIENT, 0, 20));
+        assertThrows(IllegalArgumentException.class, () -> service.list(CLIENT, 1, 0));
+        assertThrows(IllegalArgumentException.class, () -> service.list(CLIENT, 1, 101));
+        assertEquals(0, service.list(CLIENT, 1, 100).total());
+    }
+
+    @Test
     void cancellingAnOrderReleasesItsStockOnceAndAgainIsHarmless() {
         ConcessionOrder order = service.create(input(null, "key-00000001", product(popcorn, 4))).order();
 
