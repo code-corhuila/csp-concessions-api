@@ -5,8 +5,11 @@ import co.edu.corhuila.csp.concessions.domain.model.ComboComponentException;
 import co.edu.corhuila.csp.concessions.domain.model.ComboNotFoundException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidComboException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidProductException;
+import co.edu.corhuila.csp.concessions.domain.model.InsufficientStockException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStatusTransitionException;
+import co.edu.corhuila.csp.concessions.domain.model.InvalidStockMovementException;
 import co.edu.corhuila.csp.concessions.domain.model.ProductNotFoundException;
+import co.edu.corhuila.csp.concessions.domain.model.StockNotAdjustableException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -98,6 +101,24 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ComboComponentException.class)
     ResponseEntity<ErrorResponse> invalidComponent(ComboComponentException exception) {
         return answer(HttpStatus.UNPROCESSABLE_ENTITY, "BUSINESS_RULE_VIOLATION", exception.getMessage(), null);
+    }
+
+    /** 400: the domain refused the stock change (zero, or beyond the size of one movement). */
+    @ExceptionHandler(InvalidStockMovementException.class)
+    ResponseEntity<ErrorResponse> invalidStockMovement(InvalidStockMovementException exception) {
+        return answer(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", exception.getMessage(), null);
+    }
+
+    /** 422: the product is inactive or the balance would exceed what can be stored (ADR-043). */
+    @ExceptionHandler(StockNotAdjustableException.class)
+    ResponseEntity<ErrorResponse> stockNotAdjustable(StockNotAdjustableException exception) {
+        return answer(HttpStatus.UNPROCESSABLE_ENTITY, "BUSINESS_RULE_VIOLATION", exception.getMessage(), null);
+    }
+
+    /** 409: a withdrawal larger than the available quantity; nothing was applied (ADR-043). */
+    @ExceptionHandler(InsufficientStockException.class)
+    ResponseEntity<ErrorResponse> insufficientStock(InsufficientStockException exception) {
+        return answer(HttpStatus.CONFLICT, "INSUFFICIENT_STOCK", exception.getMessage(), null);
     }
 
     /** 404: no combo with that id. */

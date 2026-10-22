@@ -73,8 +73,9 @@ The routes are served under `/api/v1/concessions`, the base `concessions-service
 | `POST /combos` | Creates a `DRAFT` combo from existing products (needs `concessions:combo:write`): `201`, `200` when the `Idempotency-Key` replays, `400`, `401`, `403`, `409`, `422` (a product that does not exist) |
 | `GET /combos` | Page of combos, like the products: an administrator sees every status, any other caller only the `PUBLISHED` ones |
 | `PATCH /combos/{comboId}` | Moves the status (needs `concessions:combo:write`), same lifecycle as a product; publishing is `422` unless every component is a `PUBLISHED` product |
+| `POST /stock/adjust` | Records a receipt (positive `quantityDelta`) or an adjustment (negative) of a product (needs `concessions:inventory:write`): `204`, also for a retry of the same `Idempotency-Key`; `400`, `401`, `403`, `404`, `409` (`INSUFFICIENT_STOCK`, or the key used with another body), `422` (inactive product). The balance never becomes negative |
 
-The token carries the permissions in its `permissions` claim; an `ADMIN` has `concessions:product:write` and `concessions:combo:write`. A product created without a
+The token carries the permissions in its `permissions` claim; an `ADMIN` has `concessions:product:write`, `concessions:combo:write` and `concessions:inventory:write`. A product created without a
 category is stored as `UNCATEGORIZED` (the contract makes it optional, the schema does not).
 
 ## What is missing
