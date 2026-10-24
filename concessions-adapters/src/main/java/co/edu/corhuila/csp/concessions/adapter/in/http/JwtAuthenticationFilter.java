@@ -42,6 +42,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static final String USER_ID_ATTRIBUTE = "userId";
     /** Request attribute with the permissions of the token ({@code permissions} claim, a set of strings). */
     public static final String PERMISSIONS_ATTRIBUTE = "permissions";
+    /** Tolerance on {@code exp} for the clock difference between services (Norma 5.3.7). */
+    static final long CLOCK_SKEW_SECONDS = 30;
 
     private static final String BEARER = "Bearer ";
     private static final Set<String> PUBLIC_PATHS = Set.of("/health", "/health/ready");
@@ -128,7 +130,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             logger.debug("rejected token: it has no exp claim");
             return Optional.empty();
         }
-        if (!expiresAt.after(new Date())) {
+        if (!expiresAt.after(new Date(System.currentTimeMillis() - CLOCK_SKEW_SECONDS * 1000))) {
             logger.debug("rejected token: it has expired");
             return Optional.empty();
         }
