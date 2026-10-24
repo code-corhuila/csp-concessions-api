@@ -4,6 +4,7 @@
 
 ### Fixed
 - `JdbcOrderRepositoryTest` registered the users of its race tests in an `ArrayList` written by many threads at once, so a user could be lost, its orders stayed in the database and the cleanup failed on `fk_stock_hold_item_product` at random; the list is now a `CopyOnWriteArrayList`.
+- The filter accepts an `exp` up to 30 seconds late, for the clock difference between services (norm 5.3.7; `csp-concessions-api#36`).
 
 ### Added
 - The CI pin of the schema of `csp-concessions-db` moves to the `qa` merge commit that adds `inbox_event` (V019, `csp-concessions-db#13`).
