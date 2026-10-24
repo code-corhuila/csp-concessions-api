@@ -109,6 +109,31 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void aTokenThatExpiredWithinTheClockSkewIsAccepted() throws Exception {
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .subject(SUB)
+                .expirationTime(new Date(System.currentTimeMillis() - 10_000))
+                .build();
+        String token = rs256Token(servicePrivateKey, claims);
+
+        mockMvc.perform(get("/products").header(JwtAuthenticationFilter.AUTHORIZATION_HEADER, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void aTokenThatExpiredBeyondTheClockSkewIsRejected() throws Exception {
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .subject(SUB)
+                .expirationTime(new Date(System.currentTimeMillis() - 35_000))
+                .build();
+        String token = rs256Token(servicePrivateKey, claims);
+
+        mockMvc.perform(get("/products").header(JwtAuthenticationFilter.AUTHORIZATION_HEADER, "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("INVALID_TOKEN"));
+    }
+
+    @Test
     void aTokenWithoutExpirationIsRejected() throws Exception {
         JWTClaimsSet claims = new JWTClaimsSet.Builder().subject(SUB).build();
 
