@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- The filter accepts an `exp` up to 30 seconds late, for the clock difference between services (norm 5.3.7; `csp-concessions-api#36`).
+
 ### Added
 - HU-CONCESSIONS-004 (routes): `POST /orders` (201, 200 on replay), `GET /orders`, `GET /orders/{orderId}` and `POST /orders/{orderId}/cancel` with the permissions of the client role, the internal `POST /internal/orders/by-reservation/{reservationId}/confirm`, `.../release` and `POST /internal/orders/expire` for `csp-worker`, the error mapping of the order rules and the wiring of `OrderService` (`ORDER_HOLD_MINUTES`, default 15) (ADR-045).
 - HU-CONCESSIONS-004 (persistence): `JdbcOrderRepository` stores an order with its lines, hold, `RESERVE` movements and outbox events in one transaction, taking the stock of each product with one guarded `UPDATE` in ascending product id (two orders cannot take the last unit, nor deadlock); confirming and releasing are conditional on the order still being `RESERVED`, so the hold is committed or released once and a release returns exactly the held quantities; the idempotency key is settled by `ON CONFLICT DO NOTHING` (ADR-045).
