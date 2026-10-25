@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import co.edu.corhuila.csp.concessions.application.port.in.StockMovementQuery;
 import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConflictException;
+import co.edu.corhuila.csp.concessions.application.port.out.StockMovementEntry;
+import co.edu.corhuila.csp.concessions.application.port.out.StockMovementPage;
 import co.edu.corhuila.csp.concessions.domain.model.InsufficientStockException;
 import co.edu.corhuila.csp.concessions.domain.model.MovementType;
 import co.edu.corhuila.csp.concessions.domain.model.Product;
@@ -14,6 +17,8 @@ import co.edu.corhuila.csp.concessions.domain.model.StockNotAdjustableException;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -202,5 +207,139 @@ class JdbcStockRepositoryTest {
         }
         pool.shutdown();
         return outcomes;
+    }
+
+    /** A row written straight to the table, as another use case would: the history reads it as it was stored. */
+    private void store(UUID productId, int delta, String type, Instant at) {
+        jdbc.update("""
+                INSERT INTO concessions.stock_movement
+                    (id, product_id, quantity_delta, balance_after, movement_type, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), productId, delta, 100, type, ADMIN, OffsetDateTime.ofInstant(at, ZoneOffset.UTC));
+    }
+
+    private static StockMovementQuery of(UUID productId, int page, int limit, Instant from, Instant to) {
+        return new StockMovementQuery(page, limit, productId, from, to);
+    }
+
+    private static List<Instant> instants(StockMovementPage page) {
+        return page.items().stream().map(StockMovementEntry::timestamp).toList();
+    }
+
+    @Test
+    void theHistoryOfAProductIsNewestFirstWithTheNameAndTheTypeAsReason() {
+        Product product = productWith(10);
+        store(product.id(), -2, "ADJUSTMENT", NOW.minusSeconds(200));
+        store(product.id(), 5, "RECEIPT", NOW.minusSeconds(300));
+        store(product.id(), 7, "RECEIPT", NOW.minusSeconds(100));
+
+        StockMovementPage page = stock.findMovements(of(product.id(), 1, 20, null, null));
+
+        assertEquals(3, page.total());
+        assertEquals(List.of(NOW.minusSeconds(100), NOW.minusSeconds(200), NOW.minusSeconds(300)), instants(page));
+        StockMovementEntry newest = page.items().get(0);
+        assertEquals(product.id(), newest.productId());
+        assertEquals(product.name(), newest.productName());
+        assertEquals(7, newest.quantityDelta());
+        assertEquals("RECEIPT", newest.reason());
+        assertEquals("ADJUSTMENT", page.items().get(1).reason());
+    }
+
+    @Test
+    void theMovementsOfOrdersAndHoldsAreInTheHistoryWithTheirOwnReason() {
+        Product product = productWith(10);
+        store(product.id(), -3, "RESERVE", NOW.minusSeconds(20));
+        store(product.id(), 3, "RELEASE", NOW.minusSeconds(10));
+        store(product.id(), -1, "CONSUME", NOW);
+
+        StockMovementPage page = stock.findMovements(of(product.id(), 1, 20, null, null));
+
+        assertEquals(List.of("CONSUME", "RELEASE", "RESERVE"),
+                page.items().stream().map(StockMovementEntry::reason).toList());
+    }
+
+    @Test
+    void thePageAndTheLimitSliceTheHistoryAndTheTotalCountsAllOfIt() {
+        Product product = productWith(10);
+        for (int i = 0; i < 5; i++) {
+            store(product.id(), 1, "RECEIPT", NOW.minusSeconds(100 - i));
+        }
+
+        StockMovementPage second = stock.findMovements(of(product.id(), 2, 2, null, null));
+        StockMovementPage third = stock.findMovements(of(product.id(), 3, 2, null, null));
+        StockMovementPage beyond = stock.findMovements(of(product.id(), 4, 2, null, null));
+
+        assertEquals(5, second.total());
+        assertEquals(2, second.items().size());
+        assertEquals(List.of(NOW.minusSeconds(98), NOW.minusSeconds(99)), instants(second));
+        assertEquals(1, third.items().size());
+        assertEquals(0, beyond.items().size());
+        assertEquals(5, beyond.total());
+    }
+
+    @Test
+    void theHistoryOfAProductDoesNotShowTheMovementsOfAnother() {
+        Product popcorn = productWith(10);
+        Product soda = productWith(10);
+        store(popcorn.id(), 1, "RECEIPT", NOW);
+        store(soda.id(), 1, "RECEIPT", NOW);
+        store(soda.id(), 2, "RECEIPT", NOW.minusSeconds(1));
+
+        StockMovementPage page = stock.findMovements(of(soda.id(), 1, 20, null, null));
+
+        assertEquals(2, page.total());
+        assertTrue(page.items().stream().allMatch(entry -> entry.productId().equals(soda.id())));
+        assertTrue(page.items().stream().allMatch(entry -> entry.productName().equals(soda.name())));
+    }
+
+    @Test
+    void theDateRangeIsInclusiveAtBothEnds() {
+        Product product = productWith(10);
+        for (long seconds : new long[] {1000, 500, 300, 100, 0}) {
+            store(product.id(), 1, "RECEIPT", NOW.minusSeconds(seconds));
+        }
+
+        StockMovementPage both = stock.findMovements(
+                of(product.id(), 1, 20, NOW.minusSeconds(500), NOW.minusSeconds(100)));
+        StockMovementPage onlyFrom = stock.findMovements(of(product.id(), 1, 20, NOW.minusSeconds(300), null));
+        StockMovementPage onlyTo = stock.findMovements(of(product.id(), 1, 20, null, NOW.minusSeconds(500)));
+
+        assertEquals(List.of(NOW.minusSeconds(100), NOW.minusSeconds(300), NOW.minusSeconds(500)), instants(both));
+        assertEquals(3, both.total());
+        assertEquals(3, onlyFrom.total());
+        assertEquals(2, onlyTo.total());
+    }
+
+    @Test
+    void movementsWithTheSameInstantKeepAStableOrderAcrossPages() {
+        Product product = productWith(10);
+        for (int i = 0; i < 4; i++) {
+            store(product.id(), 1, "RECEIPT", NOW);
+        }
+
+        List<UUID> whole = stock.findMovements(of(product.id(), 1, 20, null, null)).items().stream()
+                .map(StockMovementEntry::id).toList();
+        List<UUID> pages = new ArrayList<>();
+        pages.addAll(stock.findMovements(of(product.id(), 1, 2, null, null)).items().stream()
+                .map(StockMovementEntry::id).toList());
+        pages.addAll(stock.findMovements(of(product.id(), 2, 2, null, null)).items().stream()
+                .map(StockMovementEntry::id).toList());
+
+        assertEquals(whole, pages);
+    }
+
+    @Test
+    void theHistoryWithoutAProductSpansEveryProduct() {
+        Product popcorn = productWith(10);
+        Product soda = productWith(10);
+        Instant longAgo = NOW.plusSeconds(86_400);
+        store(popcorn.id(), 1, "RECEIPT", longAgo);
+        store(soda.id(), 1, "RECEIPT", longAgo);
+
+        StockMovementPage page = stock.findMovements(of(null, 1, 100, longAgo, longAgo));
+
+        assertTrue(page.total() >= 2);
+        assertTrue(page.items().stream().map(StockMovementEntry::productId).toList().containsAll(
+                List.of(popcorn.id(), soda.id())));
     }
 }

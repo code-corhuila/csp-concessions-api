@@ -1,5 +1,6 @@
 package co.edu.corhuila.csp.concessions.application.port.out;
 
+import co.edu.corhuila.csp.concessions.application.port.in.StockMovementQuery;
 import co.edu.corhuila.csp.concessions.domain.model.StockMovement;
 import java.util.Optional;
 
@@ -18,4 +19,10 @@ public interface StockRepository {
      * A key stored meanwhile by a concurrent request with another body is an {@link IdempotencyKeyConflictException}.
      */
     StockMovement append(StockMovement movement);
+
+    /**
+     * One page of the history, newest first with the id as tie-break so pages never repeat or skip a row, and the
+     * number of movements that match the filters. It reads every movement, the ones of the orders included.
+     */
+    StockMovementPage findMovements(StockMovementQuery query);
 }
