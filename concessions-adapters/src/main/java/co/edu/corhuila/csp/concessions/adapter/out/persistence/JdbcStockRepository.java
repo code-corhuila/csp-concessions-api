@@ -1,6 +1,9 @@
 package co.edu.corhuila.csp.concessions.adapter.out.persistence;
 
+import co.edu.corhuila.csp.concessions.application.port.in.StockMovementQuery;
 import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConflictException;
+import co.edu.corhuila.csp.concessions.application.port.out.StockMovementEntry;
+import co.edu.corhuila.csp.concessions.application.port.out.StockMovementPage;
 import co.edu.corhuila.csp.concessions.application.port.out.StockRepository;
 import co.edu.corhuila.csp.concessions.domain.model.InsufficientStockException;
 import co.edu.corhuila.csp.concessions.domain.model.MovementType;
@@ -9,8 +12,11 @@ import co.edu.corhuila.csp.concessions.domain.model.ProductNotFoundException;
 import co.edu.corhuila.csp.concessions.domain.model.StockMovement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,6 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * evaluated against the row as it is at that moment, so two withdrawals that together exceed the balance
  * cannot both succeed. The guard mirrors {@link Product#adjustStock}; when it fails, the product is read
  * again and the domain says why. {@code ON CONFLICT DO NOTHING} settles a race between two requests with the same key.
+ * The history (HU-CONCESSIONS-007) is a read of the same table joined with the name of the product.
  */
 @Repository
 public class JdbcStockRepository implements StockRepository {
@@ -47,6 +54,14 @@ public class JdbcStockRepository implements StockRepository {
             SELECT id, product_id, quantity_delta, balance_after, movement_type, idempotency_key, created_by, created_at
             FROM concessions.stock_movement
             """;
+
+    private static final String SELECT_HISTORY = """
+            SELECT m.id, m.product_id, p.name AS product_name, m.quantity_delta, m.movement_type, m.created_at
+            FROM concessions.stock_movement m
+            JOIN concessions.product p ON p.id = m.product_id
+            """;
+
+    private static final String COUNT_HISTORY = "SELECT count(*) FROM concessions.stock_movement m ";
 
     private final JdbcTemplate jdbc;
     private final JdbcProductRepository products;
@@ -81,6 +96,32 @@ public class JdbcStockRepository implements StockRepository {
         });
     }
 
+    @Override
+    public StockMovementPage findMovements(StockMovementQuery query) {
+        List<Object> filters = new ArrayList<>();
+        StringBuilder where = new StringBuilder("WHERE true ");
+        if (query.productId() != null) {
+            where.append("AND m.product_id = ? ");
+            filters.add(query.productId());
+        }
+        if (query.from() != null) {
+            where.append("AND m.created_at >= ? ");
+            filters.add(utc(query.from()));
+        }
+        if (query.to() != null) {
+            where.append("AND m.created_at <= ? ");
+            filters.add(utc(query.to()));
+        }
+        Long total = jdbc.queryForObject(COUNT_HISTORY + where, Long.class, filters.toArray());
+        List<Object> window = new ArrayList<>(filters);
+        window.add(query.limit());
+        window.add((long) (query.page() - 1) * query.limit());
+        List<StockMovementEntry> items = jdbc.query(
+                SELECT_HISTORY + where + "ORDER BY m.created_at DESC, m.id DESC LIMIT ? OFFSET ?",
+                JdbcStockRepository::toEntry, window.toArray());
+        return new StockMovementPage(items, total == null ? 0 : total);
+    }
+
     /** Moves the balance and returns what it is now; the domain explains a refusal. */
     private int moveBalance(StockMovement movement) {
         OffsetDateTime now = at(movement);
@@ -108,7 +149,17 @@ public class JdbcStockRepository implements StockRepository {
     }
 
     private static OffsetDateTime at(StockMovement movement) {
-        return OffsetDateTime.ofInstant(movement.createdAt(), ZoneOffset.UTC);
+        return utc(movement.createdAt());
+    }
+
+    private static OffsetDateTime utc(Instant instant) {
+        return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static StockMovementEntry toEntry(ResultSet row, int rowNumber) throws SQLException {
+        return new StockMovementEntry(row.getObject("id", UUID.class), row.getObject("product_id", UUID.class),
+                row.getString("product_name"), row.getInt("quantity_delta"), row.getString("movement_type"),
+                row.getObject("created_at", OffsetDateTime.class).toInstant());
     }
 
     private static StockMovement toMovement(ResultSet row, int rowNumber) throws SQLException {

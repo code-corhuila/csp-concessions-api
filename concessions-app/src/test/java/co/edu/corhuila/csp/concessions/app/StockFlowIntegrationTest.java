@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -165,5 +167,73 @@ class StockFlowIntegrationTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode(), response.getBody());
         assertEquals(3, stockOf(id));
+    }
+
+    private ResponseEntity<String> history(String token, String query) {
+        HttpHeaders headers = new HttpHeaders();
+        if (token != null) {
+            headers.set("Authorization", "Bearer " + token);
+        }
+        return rest.exchange("/stock/movements" + query, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+    }
+
+    private String inventoryReader() {
+        return JWT_KEY.token(SUB, List.of("concessions:inventory:read"));
+    }
+
+    @Test
+    void hu007TheAdministratorReadsTheHistoryNewestFirstWithTheNameAndTheReason() throws Exception {
+        String id = createProduct("Flow stock history", 10);
+        assertEquals(HttpStatus.NO_CONTENT, adjust(id, 5, UUID.randomUUID().toString()).getStatusCode());
+        assertEquals(HttpStatus.NO_CONTENT, adjust(id, -2, UUID.randomUUID().toString()).getStatusCode());
+
+        ResponseEntity<String> response = history(inventoryReader(), "?productId=" + id);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+        JsonNode body = MAPPER.readTree(response.getBody());
+        assertEquals(2, body.get("meta").get("total").asInt());
+        assertEquals(1, body.get("meta").get("page").asInt());
+        assertEquals(20, body.get("meta").get("limit").asInt());
+        assertEquals(1, body.get("meta").get("totalPages").asInt());
+        JsonNode newest = body.get("data").get(0);
+        assertEquals(id, newest.get("productId").asText());
+        assertEquals("Flow stock history", newest.get("productName").asText());
+        assertEquals(-2, newest.get("quantityDelta").asInt());
+        assertEquals("ADJUSTMENT", newest.get("reason").asText());
+        assertEquals("RECEIPT", body.get("data").get(1).get("reason").asText());
+        assertEquals(false, newest.has("balanceAfter"));
+    }
+
+    @Test
+    void hu007TheDateRangeAndThePageNarrowTheHistory() throws Exception {
+        String id = createProduct("Flow stock range", 10);
+        assertEquals(HttpStatus.NO_CONTENT, adjust(id, 5, UUID.randomUUID().toString()).getStatusCode());
+        jdbc.update("UPDATE concessions.stock_movement SET created_at = now() - interval '10 days' "
+                + "WHERE product_id = ?::uuid", id);
+        assertEquals(HttpStatus.NO_CONTENT, adjust(id, 1, UUID.randomUUID().toString()).getStatusCode());
+        String threeDaysAgo = Instant.now().minus(Duration.ofDays(3)).toString();
+
+        JsonNode recent = MAPPER.readTree(history(inventoryReader(),
+                "?productId=" + id + "&fromDate=" + threeDaysAgo).getBody());
+        JsonNode old = MAPPER.readTree(history(inventoryReader(),
+                "?productId=" + id + "&toDate=" + threeDaysAgo).getBody());
+        JsonNode firstPage = MAPPER.readTree(history(inventoryReader(), "?productId=" + id + "&limit=1").getBody());
+
+        assertEquals(1, recent.get("meta").get("total").asInt());
+        assertEquals(1, recent.get("data").get(0).get("quantityDelta").asInt());
+        assertEquals(1, old.get("meta").get("total").asInt());
+        assertEquals(5, old.get("data").get(0).get("quantityDelta").asInt());
+        assertEquals(2, firstPage.get("meta").get("total").asInt());
+        assertEquals(2, firstPage.get("meta").get("totalPages").asInt());
+        assertEquals(1, firstPage.get("data").size());
+    }
+
+    @Test
+    void hu007OnlyThePermissionToReadTheInventoryOpensTheHistory() throws Exception {
+        assertEquals(HttpStatus.UNAUTHORIZED, history(null, "").getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN, history(inventoryAdmin(), "").getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, history(inventoryReader(), "?limit=101").getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, history(inventoryReader(),
+                "?fromDate=2026-10-02T00:00:00Z&toDate=2026-10-01T00:00:00Z").getStatusCode());
     }
 }
