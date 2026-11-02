@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- HU-CONCESSIONS-004 (persistence): `JdbcOrderRepository` stores an order with its lines, hold, `RESERVE` movements and outbox events in one transaction, taking the stock of each product with one guarded `UPDATE` in ascending product id (two orders cannot take the last unit, nor deadlock); confirming and releasing are conditional on the order still being `RESERVED`, so the hold is committed or released once and a release returns exactly the held quantities; the idempotency key is settled by `ON CONFLICT DO NOTHING` (ADR-045).
 - The CI pins the schema of `csp-concessions-db` to the merge commit that adds the order, stock hold and outbox tables (V012 to V018).
 - HU-CONCESSIONS-004 (use cases and ports): `OrderService` creates the order all or nothing (snapshot of names and prices, combos expanded into product quantities, one live order per reservation, idempotent by user, key and body hash), reads and cancels the orders of the caller and reacts to the confirmation or expiry of a reservation and to the deadline of an order without one, each effect once; `OrderRepository` and the outbox event of the port (ADR-045).
 - HU-CONCESSIONS-004 (domain): the immutable `ConcessionOrder` (RESERVED to CONFIRMED or CANCELLED once, total equal to its snapshot lines, 1 to 20 lines of 1 to 20 units, expiry for an order without reservation), its `OrderLine` snapshot and the `StockHold` (HELD to COMMITTED or RELEASED once, products in ascending id order), with their typed errors (ADR-045).
