@@ -2,7 +2,7 @@
 
 ## 3.0.0 - 2026-10-21
 
-First release of `csp-concessions-api` in `main` with the service code. It needs `csp-concessions-db` 3.0.0 (V001 to V011) applied first.
+First release of `csp-concessions-api` in `main` with the service code. It needs `csp-concessions-db` 3.0.0 (V001 to V018) applied first.
 
 ### Added
 - HU-CONCESSIONS-001: products (`POST/GET/PATCH /products`) with the permission `concessions:product:write`, RS256 token validation, the single error envelope, correlation id, readiness, the image, the compose service and the CI that applies the schema.
