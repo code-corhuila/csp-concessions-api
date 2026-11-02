@@ -47,6 +47,7 @@ import java.util.function.Supplier;
  */
 public class OrderService implements OrderUseCases {
 
+    private static final int MAX_LIMIT = 100;
     private static final String CANCEL_BY_CLIENT = "CLIENT";
     private static final String CANCEL_BY_RESERVATION = "RESERVATION_EXPIRED";
     private static final String CANCEL_BY_DEADLINE = "ORDER_EXPIRED";
@@ -107,6 +108,9 @@ public class OrderService implements OrderUseCases {
 
     @Override
     public OrderPage list(UUID userId, int page, int limit) {
+        if (page < 1 || limit < 1 || limit > MAX_LIMIT) {
+            throw new IllegalArgumentException("page starts at 1 and limit is between 1 and " + MAX_LIMIT);
+        }
         return orders.findPage(userId, page, limit);
     }
 

@@ -4,11 +4,15 @@ import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConfli
 import co.edu.corhuila.csp.concessions.domain.model.ComboComponentException;
 import co.edu.corhuila.csp.concessions.domain.model.ComboNotFoundException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidComboException;
+import co.edu.corhuila.csp.concessions.domain.model.InvalidOrderException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidProductException;
 import co.edu.corhuila.csp.concessions.domain.model.InsufficientStockException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStockMovementException;
+import co.edu.corhuila.csp.concessions.domain.model.OrderItemUnavailableException;
+import co.edu.corhuila.csp.concessions.domain.model.OrderNotFoundException;
 import co.edu.corhuila.csp.concessions.domain.model.ProductNotFoundException;
+import co.edu.corhuila.csp.concessions.domain.model.ReservationAlreadyOrderedException;
 import co.edu.corhuila.csp.concessions.domain.model.StockNotAdjustableException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -119,6 +123,30 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InsufficientStockException.class)
     ResponseEntity<ErrorResponse> insufficientStock(InsufficientStockException exception) {
         return answer(HttpStatus.CONFLICT, "INSUFFICIENT_STOCK", exception.getMessage(), null);
+    }
+
+    /** 400: the domain refused the order (lines, quantities or total outside the rules, ADR-045). */
+    @ExceptionHandler(InvalidOrderException.class)
+    ResponseEntity<ErrorResponse> invalidOrder(InvalidOrderException exception) {
+        return answer(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", exception.getMessage(), null);
+    }
+
+    /** 422: a requested product or combo does not exist, is not published, or has a component that is not. */
+    @ExceptionHandler(OrderItemUnavailableException.class)
+    ResponseEntity<ErrorResponse> orderItemUnavailable(OrderItemUnavailableException exception) {
+        return answer(HttpStatus.UNPROCESSABLE_ENTITY, "BUSINESS_RULE_VIOLATION", exception.getMessage(), null);
+    }
+
+    /** 409: the reservation already has a live order. */
+    @ExceptionHandler(ReservationAlreadyOrderedException.class)
+    ResponseEntity<ErrorResponse> reservationAlreadyOrdered(ReservationAlreadyOrderedException exception) {
+        return answer(HttpStatus.CONFLICT, "CONFLICT", exception.getMessage(), null);
+    }
+
+    /** 404: no order with that id for the caller (another user's order is not revealed). */
+    @ExceptionHandler(OrderNotFoundException.class)
+    ResponseEntity<ErrorResponse> orderNotFound(OrderNotFoundException exception) {
+        return answer(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), null);
     }
 
     /** 404: no combo with that id. */
