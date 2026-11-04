@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -58,7 +59,8 @@ class JdbcOrderRepositoryTest {
     private static JdbcOrderRepository orders;
 
     private final List<UUID> productIds = new ArrayList<>();
-    private final List<UUID> userIds = new ArrayList<>();
+    /** The race tests create users from many threads at once. */
+    private final List<UUID> userIds = new CopyOnWriteArrayList<>();
 
     @BeforeAll
     static void openPool() {
