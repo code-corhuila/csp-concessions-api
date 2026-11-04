@@ -4,6 +4,9 @@
 
 First release of `csp-concessions-api` in `main` with the service code. It needs `csp-concessions-db` 3.0.0 (V001 to V019) applied first.
 
+### Fixed
+- `JdbcOrderRepositoryTest` registered the users of its race tests in an `ArrayList` written by many threads at once, so a user could be lost, its orders stayed in the database and the cleanup failed on `fk_stock_hold_item_product` at random; the list is now a `CopyOnWriteArrayList`.
+
 ### Added
 - HU-CONCESSIONS-001: products (`POST/GET/PATCH /products`) with the permission `concessions:product:write`, RS256 token validation, the single error envelope, correlation id, readiness, the image, the compose service and the CI that applies the schema.
 - HU-CONCESSIONS-002: the `Combo` aggregate and its use cases, `POST /combos`, `GET /combos` and `PATCH /combos/{comboId}` with the permission `concessions:combo:write`. A combo is saved as a `DRAFT` from existing products with positive quantities and published only while every component is a `PUBLISHED` product (`422` otherwise). Idempotent creation by `Idempotency-Key`.
