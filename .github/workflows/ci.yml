@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: code-corhuila/csp-concessions-db
-          ref: a7ff65e32c5bccc8b42fea220ad17bcee2feb21d
+          ref: b7b7ed9e3b8ebc70b09c32a600325c56de6146f5
           path: csp-concessions-db
           ssh-key: ${{ secrets.DB_DEPLOY_KEY }}
       - name: Apply the concessions schema
