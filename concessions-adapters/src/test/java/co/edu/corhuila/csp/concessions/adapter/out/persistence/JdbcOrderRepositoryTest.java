@@ -319,6 +319,22 @@ class JdbcOrderRepositoryTest {
     }
 
     @Test
+    void deactivatingTheProductOfAnOrderLeavesTheOrderValidAndConfirmable() {
+        Product popcorn = publishedProduct("Popcorn", 1500, 10);
+        Draft draft = draft(newUser(), UUID.randomUUID(), popcorn, 4);
+        place(draft, "key-order-0013");
+        products.save(products.findById(popcorn.id()).orElseThrow().deactivate(NOW));
+
+        ConcessionOrder stored = orders.findById(draft.order().id()).orElseThrow();
+        ConcessionOrder confirmed = draft.order().confirm(NOW.plusSeconds(60));
+
+        assertEquals(draft.order(), stored);
+        assertEquals(OrderStatus.RESERVED, stored.status());
+        assertTrue(orders.confirm(confirmed, event("ConcessionOrderConfirmed", confirmed)));
+        assertEquals(OrderStatus.CONFIRMED, orders.findById(draft.order().id()).orElseThrow().status());
+    }
+
+    @Test
     void theSweepFindsOnlyReservedOrdersWhoseDeadlinePassed() {
         Product popcorn = publishedProduct("Popcorn", 1500, 50);
         UUID user = newUser();
