@@ -7,7 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import co.edu.corhuila.csp.concessions.application.port.out.CreateProductResult;
 import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConflictException;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductPage;
+import co.edu.corhuila.csp.concessions.application.port.in.StockMovementQuery;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductRepository;
+import co.edu.corhuila.csp.concessions.application.port.out.StockMovementEntry;
+import co.edu.corhuila.csp.concessions.application.port.out.StockMovementPage;
 import co.edu.corhuila.csp.concessions.application.port.out.StockRepository;
 import co.edu.corhuila.csp.concessions.domain.model.InsufficientStockException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStockMovementException;
@@ -124,10 +127,57 @@ class StockServiceTest {
     }
 
     /** What the database adapter does in one transaction, reduced to maps. */
+    @Test
+    void theHistoryIsReadFromTheRepositoryWithTheQueryAsGiven() {
+        UUID product = UUID.randomUUID();
+        StockMovementQuery query = new StockMovementQuery(2, 50, product, NOW.minusSeconds(3600), NOW);
+        StockMovementPage page = new StockMovementPage(List.of(new StockMovementEntry(
+                UUID.randomUUID(), product, "Popcorn", 5, "RECEIPT", NOW)), 51);
+        stock.nextPage = page;
+
+        assertEquals(page, service.listMovements(query));
+        assertEquals(query, stock.lastQuery);
+    }
+
+    @Test
+    void theHistoryNeedsNoFilter() {
+        StockMovementQuery query = new StockMovementQuery(1, 20, null, null, null);
+        stock.nextPage = new StockMovementPage(List.of(), 0);
+
+        assertEquals(0, service.listMovements(query).total());
+    }
+
+    @Test
+    void aPageBelowOneOrALimitOutsideOneAndOneHundredIsRefused() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listMovements(new StockMovementQuery(0, 20, null, null, null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listMovements(new StockMovementQuery(1, 0, null, null, null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listMovements(new StockMovementQuery(1, 101, null, null, null)));
+        assertEquals(null, stock.lastQuery);
+    }
+
+    @Test
+    void aRangeThatEndsBeforeItStartsIsRefused() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listMovements(new StockMovementQuery(1, 20, null, NOW, NOW.minusSeconds(1))));
+        assertEquals(null, stock.lastQuery);
+    }
+
+    @Test
+    void aRangeOfOneInstantIsAllowed() {
+        stock.nextPage = new StockMovementPage(List.of(), 0);
+
+        assertEquals(0, service.listMovements(new StockMovementQuery(1, 20, null, NOW, NOW)).total());
+    }
+
     private static final class FakeStock implements ProductRepository, StockRepository {
 
         final Map<UUID, Product> products = new HashMap<>();
         final List<StockMovement> movements = new ArrayList<>();
+        StockMovementQuery lastQuery;
+        StockMovementPage nextPage;
 
         @Override
         public Optional<Product> findById(UUID id) {
@@ -137,6 +187,12 @@ class StockServiceTest {
         @Override
         public Optional<StockMovement> findByIdempotencyKey(String key) {
             return movements.stream().filter(m -> key.equals(m.idempotencyKey())).findFirst();
+        }
+
+        @Override
+        public StockMovementPage findMovements(StockMovementQuery query) {
+            lastQuery = query;
+            return nextPage;
         }
 
         @Override
