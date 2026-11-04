@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- `JdbcOrderRepositoryTest` registered the users of its race tests in an `ArrayList` written by many threads at once, so a user could be lost, its orders stayed in the database and the cleanup failed on `fk_stock_hold_item_product` at random; the list is now a `CopyOnWriteArrayList`.
+
 ### Added
 - The CI pin of the schema of `csp-concessions-db` moves to the `qa` merge commit that adds `inbox_event` (V019, `csp-concessions-db#13`).
 - HU-CONCESSIONS-005: the internal `confirm` and `release` accept the optional header `X-Event-Id`. `ReservationEventService` records the event in `inbox_event` and changes the order in one transaction, so a redelivered event answers `204` and changes nothing, and an event the order refuses (`409`) is not recorded (ADR-063; `csp-concessions-api#5`).
