@@ -1,0 +1,28 @@
+# Changelog
+
+## 3.0.0 - 2026-10-21
+
+First release of `csp-concessions-api` in `main` with the service code. It needs `csp-concessions-db` 3.0.0 (V001 to V019) applied first.
+
+### Fixed
+- `JdbcOrderRepositoryTest` registered the users of its race tests in an `ArrayList` written by many threads at once, so a user could be lost, its orders stayed in the database and the cleanup failed on `fk_stock_hold_item_product` at random; the list is now a `CopyOnWriteArrayList`.
+- The filter accepts an `exp` up to 30 seconds late, for the clock difference between services (norm 5.3.7; `csp-concessions-api#36`).
+
+### Added
+- HU-CONCESSIONS-001: products (`POST/GET/PATCH /products`) with the permission `concessions:product:write`, RS256 token validation, the single error envelope, correlation id, readiness, the image, the compose service and the CI that applies the schema.
+- HU-CONCESSIONS-002: the `Combo` aggregate and its use cases, `POST /combos`, `GET /combos` and `PATCH /combos/{comboId}` with the permission `concessions:combo:write`. A combo is saved as a `DRAFT` from existing products with positive quantities and published only while every component is a `PUBLISHED` product (`422` otherwise). Idempotent creation by `Idempotency-Key`.
+- HU-CONCESSIONS-003: `POST /stock/adjust` with the permission `concessions:inventory:write`. `Product.adjustStock` keeps the balance non-negative and refuses an inactive product, the immutable `StockMovement` records each receipt or adjustment (type from the sign of the change) and `JdbcStockRepository` moves the balance with one guarded `UPDATE` and stores the movement in the same transaction, so concurrent withdrawals cannot drive it below zero; a retry of the same `Idempotency-Key` applies nothing. Errors: `409 INSUFFICIENT_STOCK`, `422` for an inactive product.
+- The CI pin of the schema of `csp-concessions-db` moves to the `qa` merge commit that adds `inbox_event` (V019, `csp-concessions-db#13`).
+- HU-CONCESSIONS-005: the internal `confirm` and `release` accept the optional header `X-Event-Id`. `ReservationEventService` records the event in `inbox_event` and changes the order in one transaction, so a redelivered event answers `204` and changes nothing, and an event the order refuses (`409`) is not recorded (ADR-063; `csp-concessions-api#5`).
+- HU-CONCESSIONS-006: the status lifecycle of a product (`PATCH /products/{productId}`, DRAFT to PUBLISHED to INACTIVE and back to PUBLISHED, `409` outside it, `400` for an unknown status) was delivered with HU-CONCESSIONS-001; this adds the test that deactivating the product of an order leaves the order valid and confirmable (`JdbcOrderRepositoryTest`).
+- HU-CONCESSIONS-007: `GET /stock/movements`, the stock history for an administrator with `concessions:inventory:read`. It lists the movements newest first (`created_at` then `id`, so pages are stable), `page` and `limit` (1 to 100), and filters by `productId` and by `fromDate` and `toDate` (both included); `reason` is the stored movement type and `productName` is read from `product` (ADR-043). `JdbcStockRepository.findMovements` reads the reservation movements of the orders too, as plain text, because `MovementType` only knows the receipts and adjustments. No route changes or deletes a movement.
+- HU-CONCESSIONS-004 (routes): `POST /orders` (201, 200 on replay), `GET /orders`, `GET /orders/{orderId}` and `POST /orders/{orderId}/cancel` with the permissions of the client role, the internal `POST /internal/orders/by-reservation/{reservationId}/confirm`, `.../release` and `POST /internal/orders/expire` for `csp-worker`, the error mapping of the order rules and the wiring of `OrderService` (`ORDER_HOLD_MINUTES`, default 15) (ADR-045).
+- HU-CONCESSIONS-004 (persistence): `JdbcOrderRepository` stores an order with its lines, hold, `RESERVE` movements and outbox events in one transaction, taking the stock of each product with one guarded `UPDATE` in ascending product id (two orders cannot take the last unit, nor deadlock); confirming and releasing are conditional on the order still being `RESERVED`, so the hold is committed or released once and a release returns exactly the held quantities; the idempotency key is settled by `ON CONFLICT DO NOTHING` (ADR-045).
+- The CI pins the schema of `csp-concessions-db` to the merge commit that adds the order, stock hold and outbox tables (V012 to V018).
+- HU-CONCESSIONS-004 (use cases and ports): `OrderService` creates the order all or nothing (snapshot of names and prices, combos expanded into product quantities, one live order per reservation, idempotent by user, key and body hash), reads and cancels the orders of the caller and reacts to the confirmation or expiry of a reservation and to the deadline of an order without one, each effect once; `OrderRepository` and the outbox event of the port (ADR-045).
+- HU-CONCESSIONS-004 (domain): the immutable `ConcessionOrder` (RESERVED to CONFIRMED or CANCELLED once, total equal to its snapshot lines, 1 to 20 lines of 1 to 20 units, expiry for an order without reservation), its `OrderLine` snapshot and the `StockHold` (HELD to COMMITTED or RELEASED once, products in ascending id order), with their typed errors (ADR-045).
+
+### Known limits
+- A combo that is already published keeps a component that is deactivated afterwards (`TD-035` in `csp-docs`).
+- Idempotency keys older than 24 hours are not purged yet.
+- The CI pins the schema of `csp-concessions-db` to a commit of its `develop`; it moves to the tag `v3.0.0` once that repository publishes it.
