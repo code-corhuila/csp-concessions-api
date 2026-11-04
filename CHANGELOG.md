@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- HU-CONCESSIONS-005: the internal `confirm` and `release` accept the optional header `X-Event-Id`. `ReservationEventService` records the event in `inbox_event` and changes the order in one transaction, so a redelivered event answers `204` and changes nothing, and an event the order refuses (`409`) is not recorded (ADR-063; `csp-concessions-api#5`).
 - HU-CONCESSIONS-004 (routes): `POST /orders` (201, 200 on replay), `GET /orders`, `GET /orders/{orderId}` and `POST /orders/{orderId}/cancel` with the permissions of the client role, the internal `POST /internal/orders/by-reservation/{reservationId}/confirm`, `.../release` and `POST /internal/orders/expire` for `csp-worker`, the error mapping of the order rules and the wiring of `OrderService` (`ORDER_HOLD_MINUTES`, default 15) (ADR-045).
 - HU-CONCESSIONS-004 (persistence): `JdbcOrderRepository` stores an order with its lines, hold, `RESERVE` movements and outbox events in one transaction, taking the stock of each product with one guarded `UPDATE` in ascending product id (two orders cannot take the last unit, nor deadlock); confirming and releasing are conditional on the order still being `RESERVED`, so the hold is committed or released once and a release returns exactly the held quantities; the idempotency key is settled by `ON CONFLICT DO NOTHING` (ADR-045).
 - The CI pins the schema of `csp-concessions-db` to the merge commit that adds the order, stock hold and outbox tables (V012 to V018).

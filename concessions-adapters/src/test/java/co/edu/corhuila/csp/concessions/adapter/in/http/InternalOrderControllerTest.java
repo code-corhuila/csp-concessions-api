@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import co.edu.corhuila.csp.concessions.application.port.in.OrderUseCases;
+import co.edu.corhuila.csp.concessions.application.port.in.ReservationEventUseCases;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStatusTransitionException;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,13 +27,17 @@ class InternalOrderControllerTest {
 
     private static final UUID RESERVATION = UUID.fromString("44444444-4444-4444-8444-444444444444");
 
+    private static final UUID EVENT = UUID.fromString("55555555-5555-4555-8555-555555555555");
+
     private OrderUseCases useCases;
+    private ReservationEventUseCases events;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         useCases = mock(OrderUseCases.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new InternalOrderController(useCases))
+        events = mock(ReservationEventUseCases.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new InternalOrderController(useCases, events))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addFilters(new CorrelationIdFilter())
                 .build();
@@ -43,7 +48,26 @@ class InternalOrderControllerTest {
         mockMvc.perform(post("/internal/orders/by-reservation/" + RESERVATION + "/confirm"))
                 .andExpect(status().isNoContent());
 
-        verify(useCases).confirmByReservation(RESERVATION);
+        verify(events).bookingConfirmed(RESERVATION, null);
+    }
+
+    @Test
+    void theEventIdHeaderReachesTheUseCaseOnBothRoutes() throws Exception {
+        mockMvc.perform(post("/internal/orders/by-reservation/" + RESERVATION + "/confirm").header("X-Event-Id", EVENT))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/internal/orders/by-reservation/" + RESERVATION + "/release").header("X-Event-Id", EVENT))
+                .andExpect(status().isNoContent());
+
+        verify(events).bookingConfirmed(RESERVATION, EVENT);
+        verify(events).reservationExpired(RESERVATION, EVENT);
+    }
+
+    @Test
+    void anEventIdThatIsNotAUuidIsA400AndAppliesNothing() throws Exception {
+        mockMvc.perform(post("/internal/orders/by-reservation/" + RESERVATION + "/confirm").header("X-Event-Id", "nope"))
+                .andExpect(status().isBadRequest());
+
+        verify(events, never()).bookingConfirmed(RESERVATION, null);
     }
 
     @Test
@@ -51,13 +75,13 @@ class InternalOrderControllerTest {
         mockMvc.perform(post("/internal/orders/by-reservation/" + RESERVATION + "/release"))
                 .andExpect(status().isNoContent());
 
-        verify(useCases).releaseByReservation(RESERVATION);
+        verify(events).reservationExpired(RESERVATION, null);
     }
 
     @Test
     void theOppositeFinalStateIsAConflict() throws Exception {
         doThrow(new InvalidStatusTransitionException("the order is CANCELLED and cannot be changed"))
-                .when(useCases).confirmByReservation(RESERVATION);
+                .when(events).bookingConfirmed(RESERVATION, null);
 
         mockMvc.perform(post("/internal/orders/by-reservation/" + RESERVATION + "/confirm"))
                 .andExpect(status().isConflict())
@@ -68,7 +92,7 @@ class InternalOrderControllerTest {
     void aReservationThatIsNotAUuidIsA400() throws Exception {
         mockMvc.perform(post("/internal/orders/by-reservation/nope/confirm")).andExpect(status().isBadRequest());
 
-        verify(useCases, never()).confirmByReservation(RESERVATION);
+        verify(events, never()).bookingConfirmed(RESERVATION, null);
     }
 
     @Test
