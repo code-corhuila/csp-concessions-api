@@ -8,6 +8,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -49,6 +54,7 @@ class OrderFlowIntegrationTest {
     private JdbcTemplate jdbc;
 
     private final List<String> clients = new ArrayList<>();
+    private final List<UUID> events = new ArrayList<>();
 
     @AfterEach
     void removeWhatThisTestWrote() {
@@ -65,6 +71,10 @@ class OrderFlowIntegrationTest {
             }
         }
         clients.clear();
+        for (UUID event : events) {
+            jdbc.update("DELETE FROM concessions.inbox_event WHERE event_id = ?", event);
+        }
+        events.clear();
         jdbc.update("DELETE FROM concessions.combo WHERE name LIKE 'Flow order%'");
         jdbc.update("DELETE FROM concessions.product WHERE name LIKE 'Flow order%'");
     }
@@ -77,6 +87,26 @@ class OrderFlowIntegrationTest {
             headers.set("Idempotency-Key", key);
         }
         return rest.exchange(path, method, new HttpEntity<>(body, headers), String.class);
+    }
+
+    /** The internal call of csp-worker for one Booking event: the same {@code eventId} on every delivery. */
+    private ResponseEntity<String> deliver(String reservationId, String action, UUID eventId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + worker());
+        headers.set("X-Event-Id", eventId.toString());
+        return rest.exchange("/internal/orders/by-reservation/" + reservationId + "/" + action, HttpMethod.POST,
+                new HttpEntity<>(headers), String.class);
+    }
+
+    private UUID newEvent() {
+        UUID event = UUID.randomUUID();
+        events.add(event);
+        return event;
+    }
+
+    private int recorded(UUID eventId) {
+        return jdbc.queryForObject("SELECT count(*) FROM concessions.inbox_event WHERE event_id = ?", Integer.class,
+                eventId);
     }
 
     private String admin() {
@@ -214,6 +244,98 @@ class OrderFlowIntegrationTest {
         assertEquals(HttpStatus.NO_CONTENT, send(HttpMethod.POST,
                 "/internal/orders/by-reservation/" + UUID.randomUUID() + "/confirm", worker(), null, null)
                 .getStatusCode());
+    }
+
+    @Test
+    void scenario1TheSameKeyReturnsTheOriginalOrderWithoutAnotherStockHold() throws Exception {
+        String popcorn = publishedProduct("Flow order once", 10);
+        String sub = newClient();
+        String body = order(null, line("PRODUCT", popcorn, 4));
+
+        String first = place(sub, "key-flow-0009", body).getBody();
+        ResponseEntity<String> again = place(sub, "key-flow-0009", body);
+
+        assertEquals(HttpStatus.OK, again.getStatusCode());
+        assertEquals(MAPPER.readTree(first).get("id"), MAPPER.readTree(again.getBody()).get("id"));
+        assertEquals(6, stockOf(popcorn));
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM concessions.stock_hold h JOIN concessions.concession_order o "
+                + "ON o.id = h.order_id WHERE o.user_id = ?::uuid", Integer.class, sub));
+    }
+
+    @Test
+    void scenario2AnEventDeliveredAgainIsAcknowledgedAndChangesNothing() throws Exception {
+        String popcorn = publishedProduct("Flow order inbox", 10);
+        String confirmedReservation = UUID.randomUUID().toString();
+        String expiredReservation = UUID.randomUUID().toString();
+        String sub = newClient();
+        String confirmed = MAPPER.readTree(place(sub, "key-flow-0010", order(confirmedReservation,
+                line("PRODUCT", popcorn, 3))).getBody()).get("id").asText();
+        String expired = MAPPER.readTree(place(sub, "key-flow-0011", order(expiredReservation,
+                line("PRODUCT", popcorn, 2))).getBody()).get("id").asText();
+        UUID bookingConfirmed = newEvent();
+        UUID reservationExpired = newEvent();
+
+        for (int delivery = 0; delivery < 3; delivery++) {
+            assertEquals(HttpStatus.NO_CONTENT, deliver(confirmedReservation, "confirm", bookingConfirmed).getStatusCode());
+            assertEquals(HttpStatus.NO_CONTENT, deliver(expiredReservation, "release", reservationExpired).getStatusCode());
+        }
+
+        assertEquals("CONFIRMED", statusOf(confirmed));
+        assertEquals("CANCELLED", statusOf(expired));
+        assertEquals(7, stockOf(popcorn));
+        assertEquals(1, eventCount(confirmed, "ConcessionOrderConfirmed"));
+        assertEquals(1, eventCount(expired, "ConcessionOrderCancelled"));
+        assertEquals(1, recorded(bookingConfirmed));
+        assertEquals(1, recorded(reservationExpired));
+    }
+
+    @Test
+    void theSameEventDeliveredAtTheSameInstantHasOneEffect() throws Exception {
+        String popcorn = publishedProduct("Flow order race", 10);
+        String reservation = UUID.randomUUID().toString();
+        String order = MAPPER.readTree(place(newClient(), "key-flow-0012", order(reservation,
+                line("PRODUCT", popcorn, 4))).getBody()).get("id").asText();
+        UUID event = newEvent();
+        int deliveries = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(deliveries);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<HttpStatus>> outcomes = new ArrayList<>();
+        for (int i = 0; i < deliveries; i++) {
+            Callable<HttpStatus> delivery = () -> {
+                start.await();
+                return HttpStatus.valueOf(deliver(reservation, "release", event).getStatusCode().value());
+            };
+            outcomes.add(pool.submit(delivery));
+        }
+        start.countDown();
+        for (Future<HttpStatus> outcome : outcomes) {
+            assertEquals(HttpStatus.NO_CONTENT, outcome.get());
+        }
+        pool.shutdown();
+
+        assertEquals("CANCELLED", statusOf(order));
+        assertEquals(10, stockOf(popcorn));
+        assertEquals(1, eventCount(order, "ConcessionOrderCancelled"));
+        assertEquals(1, recorded(event));
+    }
+
+    @Test
+    void anEventTheOrderRefusesIsNotRecordedAndAnotherEventStillSettlesNothingTwice() throws Exception {
+        String popcorn = publishedProduct("Flow order refused", 10);
+        String reservation = UUID.randomUUID().toString();
+        String order = MAPPER.readTree(place(newClient(), "key-flow-0013", order(reservation,
+                line("PRODUCT", popcorn, 2))).getBody()).get("id").asText();
+        UUID confirmation = newEvent();
+        UUID lateExpiration = newEvent();
+        assertEquals(HttpStatus.NO_CONTENT, deliver(reservation, "confirm", confirmation).getStatusCode());
+
+        ResponseEntity<String> refused = deliver(reservation, "release", lateExpiration);
+
+        assertEquals(HttpStatus.CONFLICT, refused.getStatusCode(), refused.getBody());
+        assertEquals(0, recorded(lateExpiration));
+        assertEquals(1, recorded(confirmation));
+        assertEquals("CONFIRMED", statusOf(order));
+        assertEquals(8, stockOf(popcorn));
     }
 
     @Test

@@ -3,15 +3,19 @@ package co.edu.corhuila.csp.concessions.app;
 import co.edu.corhuila.csp.concessions.application.port.in.ComboUseCases;
 import co.edu.corhuila.csp.concessions.application.port.in.OrderUseCases;
 import co.edu.corhuila.csp.concessions.application.port.in.ProductUseCases;
+import co.edu.corhuila.csp.concessions.application.port.in.ReservationEventUseCases;
 import co.edu.corhuila.csp.concessions.application.port.in.StockUseCases;
 import co.edu.corhuila.csp.concessions.application.port.out.ComboRepository;
 import co.edu.corhuila.csp.concessions.application.port.out.ComponentProducts;
+import co.edu.corhuila.csp.concessions.application.port.out.InboxRepository;
 import co.edu.corhuila.csp.concessions.application.port.out.OrderRepository;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductRepository;
 import co.edu.corhuila.csp.concessions.application.port.out.StockRepository;
+import co.edu.corhuila.csp.concessions.application.port.out.TransactionRunner;
 import co.edu.corhuila.csp.concessions.application.usecase.ComboService;
 import co.edu.corhuila.csp.concessions.application.usecase.OrderService;
 import co.edu.corhuila.csp.concessions.application.usecase.ProductService;
+import co.edu.corhuila.csp.concessions.application.usecase.ReservationEventService;
 import co.edu.corhuila.csp.concessions.application.usecase.StockService;
 import java.time.Clock;
 import java.time.Duration;
@@ -49,6 +53,12 @@ public class UseCaseConfiguration {
                                 @Value("${ORDER_HOLD_MINUTES:15}") long holdMinutes) {
         return new OrderService(orders, products, combos, components, clock, UUID::randomUUID,
                 Duration.ofMinutes(holdMinutes));
+    }
+
+    @Bean
+    ReservationEventUseCases reservationEventUseCases(OrderUseCases orders, InboxRepository inbox,
+                                                      TransactionRunner transactions) {
+        return new ReservationEventService(orders, inbox, transactions);
     }
 
     @Bean
