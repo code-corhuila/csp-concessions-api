@@ -5,6 +5,7 @@
 First release of `csp-concessions-api` in `main` with the service code. It needs `csp-concessions-db` 3.0.0 (V001 to V019) applied first.
 
 ### Fixed
+- `deploy/compose.yml` passes `SERVICE_SUBJECTS` (default `csp-worker`) and `WORKFLOW_SUBJECTS` (default empty) to the container, so a platform that sets them reaches the filter; before, the container always used the filter's defaults and `/internal/workflow/` stayed closed (HU-CONCESSIONS-004, ADR-069).
 - `JdbcOrderRepositoryTest` registered the users of its race tests in an `ArrayList` written by many threads at once, so a user could be lost, its orders stayed in the database and the cleanup failed on `fk_stock_hold_item_product` at random; the list is now a `CopyOnWriteArrayList`.
 - The filter accepts an `exp` up to 30 seconds late, for the clock difference between services (norm 5.3.7; `csp-concessions-api#36`).
 

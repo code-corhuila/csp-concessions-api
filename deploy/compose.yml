@@ -12,6 +12,10 @@ services:
       # The service refuses to start without one of the two.
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       JWT_PUBLIC_KEY_FILE: ${JWT_PUBLIC_KEY_FILE:-}
+      # Subjects of the service tokens, one list per family of internal routes (ADR-069). The defaults are the
+      # filter's own: the worker for /internal/orders/ and /internal/maintenance/, nobody for /internal/workflow/.
+      SERVICE_SUBJECTS: ${SERVICE_SUBJECTS:-csp-worker}
+      WORKFLOW_SUBJECTS: ${WORKFLOW_SUBJECTS:-}
       # Database of this domain (Annex J.5). Compose refuses to start without them, so a missing
       # value is reported by name instead of failing inside the JVM.
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?set SPRING_DATASOURCE_URL in .env or in the platform}
