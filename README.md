@@ -44,7 +44,7 @@ java -jar concessions-app/target/concessions-app-0.1.0.jar   # starts on PORT, 8
 
 The service **refuses to start without the public key** that validates the tokens (Norma 5.3.7): set
 `JWT_PUBLIC_KEY` (the PEM) or `JWT_PUBLIC_KEY_FILE` (its path). `ORDER_HOLD_MINUTES` (default 15) is how long an order without a reservation keeps its stock. `SERVICE_SUBJECTS` (default `csp-worker`) lists the `sub` of
-the service tokens allowed on `/internal/` routes; a client token receives `403` there and a service token receives `403` anywhere else.
+the service tokens allowed on `/internal/` routes; a client token receives `403` there and a service token receives `403` anywhere else. `WORKFLOW_SUBJECTS` (default empty, so the family stays closed; the platform sets `csp-workflow`) lists the `sub` of the tokens allowed on `/internal/workflow/` (ADR-069); a token of one list receives `403` on the routes of the other.
 Every error is the envelope of the contract (`error`, `message`, `details`, `traceId`) and every answer carries `X-Correlation-Id`.
 Every variable the service reads is listed in `.env.example`; never commit a real `.env`.
 
@@ -79,6 +79,8 @@ The routes are served under `/api/v1/concessions`, the base `concessions-service
 | `GET /orders`, `GET /orders/{orderId}` | The caller's own history (page, `limit` 1 to 100) and one of its orders (needs `concessions:order:read:self`); another user's order is `404` |
 | `POST /orders/{orderId}/cancel` | Cancels the caller's `RESERVED` order and releases its stock once (needs `concessions:order:cancel:self`): `204`, `409` for a confirmed order |
 | `POST /internal/orders/by-reservation/{reservationId}/confirm`, `.../release` | Called by `csp-worker` on `BookingConfirmed` and `ReservationExpired`: `204`, also when the reservation has no order or the order is already in that state, `409` for the opposite final state |
+| `POST /internal/workflow/orders` | Called by `csp-workflow` in the step `place-order` of the saga `book-seats` (ADR-069): the body of `POST /orders` plus `userId`; `Idempotency-Key` `<sagaId>:place-order`; `201` on creation, `200` with the original order on a replay, `409` for another body, insufficient stock or a reservation with a live order, `422` for an unavailable item |
+| `POST /internal/workflow/orders/{orderId}/cancel` | Called by `csp-workflow` to compensate the step: cancels the order of any user and releases its stock once; `200` with the order, also when it was already cancelled; `404` for an unknown order; `409` for a confirmed one |
 | `POST /internal/orders/expire` | Called by `csp-worker` on a schedule: releases up to `batchSize` (1 to 500, default 100) orders without a reservation whose `ORDER_HOLD_MINUTES` ran out |
 
 The token carries the permissions in its `permissions` claim; an `ADMIN` has `concessions:product:write`, `concessions:combo:write`, `concessions:inventory:write` and `concessions:inventory:read`. A product created without a
