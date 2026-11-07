@@ -267,6 +267,38 @@ class OrderServiceTest {
     }
 
     @Test
+    void theWorkflowCancelsTheOrderOfAnyUserReleasesItsStockOnceAndGetsItBackAgain() {
+        ConcessionOrder order = service.create(input(RESERVATION, "key-00000001", product(popcorn, 4))).order();
+
+        ConcessionOrder first = service.cancelForWorkflow(order.id());
+        ConcessionOrder again = service.cancelForWorkflow(order.id());
+
+        assertEquals(OrderStatus.CANCELLED, first.status());
+        assertEquals(OrderStatus.CANCELLED, again.status());
+        assertEquals(order.id(), again.id());
+        assertEquals(10, world.products.get(popcorn.id()).availableStock());
+        List<OutboxEvent> cancelled = world.events.stream()
+                .filter(e -> e.eventType().equals("ConcessionOrderCancelled")).toList();
+        assertEquals(1, cancelled.size());
+        assertEquals("WORKFLOW", cancelled.get(0).payload().get("reason"));
+    }
+
+    @Test
+    void theWorkflowCannotCancelAnOrderThatDoesNotExist() {
+        assertThrows(OrderNotFoundException.class, () -> service.cancelForWorkflow(UUID.randomUUID()));
+    }
+
+    @Test
+    void theWorkflowCannotCancelAConfirmedOrder() {
+        ConcessionOrder order = service.create(input(RESERVATION, "key-00000001", product(popcorn, 4))).order();
+        service.confirmByReservation(RESERVATION);
+
+        assertThrows(InvalidStatusTransitionException.class, () -> service.cancelForWorkflow(order.id()));
+        assertEquals(OrderStatus.CONFIRMED, world.orders.get(order.id()).status());
+        assertEquals(6, world.products.get(popcorn.id()).availableStock());
+    }
+
+    @Test
     void anotherUserCannotCancelAnOrder() {
         ConcessionOrder order = service.create(input(null, "key-00000001", product(popcorn, 1))).order();
 
