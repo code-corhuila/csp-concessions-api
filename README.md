@@ -56,7 +56,9 @@ docker run --rm -p 8085:8085 -e JWT_PUBLIC_KEY_FILE=/run/jwt/public.pem -v /path
 ```
 
 In the platform, `csp-infra-postgres` includes `deploy/compose.yml`, which exposes the port on the `platform` network
-without publishing it.
+without publishing it. The compose file connects as `concessions_app` (`CONCESSIONS_APP_USER`, `CONCESSIONS_APP_PASSWORD`) to the
+database `PG_DATABASE`, and maps them to `SPRING_DATASOURCE_*` because the environment file of the platform already uses those
+names for another service.
 
 ## API
 
