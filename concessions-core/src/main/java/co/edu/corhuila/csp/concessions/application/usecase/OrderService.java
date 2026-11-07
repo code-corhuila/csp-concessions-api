@@ -51,6 +51,7 @@ public class OrderService implements OrderUseCases {
     private static final String CANCEL_BY_CLIENT = "CLIENT";
     private static final String CANCEL_BY_RESERVATION = "RESERVATION_EXPIRED";
     private static final String CANCEL_BY_DEADLINE = "ORDER_EXPIRED";
+    private static final String CANCEL_BY_WORKFLOW = "WORKFLOW";
 
     private final OrderRepository orders;
     private final ProductRepository products;
@@ -117,6 +118,14 @@ public class OrderService implements OrderUseCases {
     @Override
     public void cancel(UUID orderId, UUID userId) {
         release(get(orderId, userId), CANCEL_BY_CLIENT);
+    }
+
+    @Override
+    public ConcessionOrder cancelForWorkflow(UUID orderId) {
+        ConcessionOrder order = orders.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException("the order does not exist"));
+        release(order, CANCEL_BY_WORKFLOW);
+        return orders.findById(orderId).orElse(order);
     }
 
     @Override

@@ -252,10 +252,81 @@ class JwtAuthenticationFilterTest {
                 .andExpect(jsonPath("$.error").value("INVALID_TOKEN"));
     }
 
+    @Test
+    void aWorkflowTokenCallsAnOperationOfTheWorkflowFamily() throws Exception {
+        String token = rs256Token(servicePrivateKey, claimsOf("csp-workflow"));
+
+        mockMvc.perform(get("/internal/workflow/probe")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void aWorkerTokenCannotCallTheWorkflowFamily() throws Exception {
+        String token = rs256Token(servicePrivateKey, claimsOf("csp-worker"));
+
+        mockMvc.perform(get("/internal/workflow/probe")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+    }
+
+    @Test
+    void aWorkflowTokenCannotCallTheMaintenanceOperations() throws Exception {
+        String token = rs256Token(servicePrivateKey, claimsOf("csp-workflow"));
+
+        mockMvc.perform(get("/internal/probe")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+    }
+
+    @Test
+    void aWorkflowTokenCannotCallAClientOperation() throws Exception {
+        String token = rs256Token(servicePrivateKey, claimsOf("csp-workflow"));
+
+        mockMvc.perform(get("/products")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+    }
+
+    @Test
+    void aClientTokenCannotCallTheWorkflowFamily() throws Exception {
+        String token = rs256Token(servicePrivateKey, validClaims());
+
+        mockMvc.perform(get("/internal/workflow/probe")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+    }
+
+    @Test
+    void theWorkflowFamilyStaysClosedWhileItsListOfSubjectsIsEmpty() throws Exception {
+        MockMvc closed = mockMvcWith(Set.of());
+
+        closed.perform(get("/internal/workflow/probe")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER,
+                                "Bearer " + rs256Token(servicePrivateKey, claimsOf("csp-workflow"))))
+                .andExpect(status().isUnauthorized());
+        closed.perform(get("/internal/workflow/probe")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER,
+                                "Bearer " + rs256Token(servicePrivateKey, claimsOf("csp-worker"))))
+                .andExpect(status().isForbidden());
+        closed.perform(get("/internal/workflow/probe")
+                        .header(JwtAuthenticationFilter.AUTHORIZATION_HEADER,
+                                "Bearer " + rs256Token(servicePrivateKey, validClaims())))
+                .andExpect(status().isForbidden());
+    }
+
     private MockMvc mockMvcWith() {
+        return mockMvcWith(Set.of("csp-workflow"));
+    }
+
+    private MockMvc mockMvcWith(Set<String> workflowSubjects) {
         JwtAuthenticationFilter filter =
                 new JwtAuthenticationFilter((RSAPublicKey) serviceKey.getPublic(), new ObjectMapper(),
-                        Set.of("csp-worker"));
+                        Set.of("csp-worker"), workflowSubjects);
         return MockMvcBuilders.standaloneSetup(new ProbeController())
                 .addFilters(new CorrelationIdFilter(), filter)
                 .build();
@@ -292,6 +363,11 @@ class JwtAuthenticationFilterTest {
         @GetMapping("/internal/probe")
         String internal() {
             return "internal";
+        }
+
+        @GetMapping("/internal/workflow/probe")
+        String workflow() {
+            return "workflow";
         }
 
         @GetMapping("/health")
