@@ -45,6 +45,7 @@ class OrderFlowIntegrationTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("jwt.public-key", JWT_KEY::publicKeyPem);
         registry.add("spring.datasource.url", () -> System.getenv("TEST_DATABASE_URL"));
+        registry.add("WORKFLOW_SUBJECTS", () -> "csp-workflow");
     }
 
     @Autowired
@@ -126,6 +127,10 @@ class OrderFlowIntegrationTest {
 
     private String worker() {
         return JWT_KEY.token("csp-worker");
+    }
+
+    private String workflow() {
+        return JWT_KEY.token("csp-workflow");
     }
 
     private String publishedProduct(String name, int stock) throws Exception {
@@ -391,6 +396,63 @@ class OrderFlowIntegrationTest {
         assertEquals(1, eventCount(id, "ConcessionOrderCancelled"));
         ResponseEntity<String> history = send(HttpMethod.GET, "/orders", clientToken(sub), null, null);
         assertEquals(1, MAPPER.readTree(history.getBody()).get("meta").get("total").asInt());
+    }
+
+    @Test
+    void theWorkflowPlacesAndCancelsAnOrderForAUserWithItsOwnCredential() throws Exception {
+        String popcorn = publishedProduct("Flow order workflow", 10);
+        String user = newClient();
+        String reservation = UUID.randomUUID().toString();
+        String body = "{\"userId\":\"" + user + "\"," + order(reservation, line("PRODUCT", popcorn, 4)).substring(1);
+
+        ResponseEntity<String> placed = send(HttpMethod.POST, "/internal/workflow/orders", workflow(),
+                "saga-0001:place-order", body);
+        String id = MAPPER.readTree(placed.getBody()).get("id").asText();
+
+        assertEquals(HttpStatus.CREATED, placed.getStatusCode(), placed.getBody());
+        assertEquals(user, MAPPER.readTree(placed.getBody()).get("userId").asText());
+        assertEquals(6, stockOf(popcorn));
+        assertEquals(HttpStatus.OK, send(HttpMethod.GET, "/orders/" + id, clientToken(user), null, null).getStatusCode());
+        ResponseEntity<String> replay = send(HttpMethod.POST, "/internal/workflow/orders", workflow(),
+                "saga-0001:place-order", body);
+        assertEquals(HttpStatus.OK, replay.getStatusCode(), replay.getBody());
+        assertEquals(id, MAPPER.readTree(replay.getBody()).get("id").asText());
+        assertEquals(6, stockOf(popcorn));
+        assertEquals(HttpStatus.CONFLICT, send(HttpMethod.POST, "/internal/workflow/orders", workflow(),
+                "saga-0002:place-order", body).getStatusCode());
+
+        for (int i = 0; i < 2; i++) {
+            ResponseEntity<String> cancelled = send(HttpMethod.POST, "/internal/workflow/orders/" + id + "/cancel",
+                    workflow(), null, null);
+            assertEquals(HttpStatus.OK, cancelled.getStatusCode(), cancelled.getBody());
+            assertEquals("CANCELLED", MAPPER.readTree(cancelled.getBody()).get("status").asText());
+        }
+        assertEquals("CANCELLED", statusOf(id));
+        assertEquals(10, stockOf(popcorn));
+        assertEquals(1, eventCount(id, "ConcessionOrderCancelled"));
+        assertEquals(HttpStatus.NOT_FOUND, send(HttpMethod.POST,
+                "/internal/workflow/orders/" + UUID.randomUUID() + "/cancel", workflow(), null, null).getStatusCode());
+    }
+
+    @Test
+    void theWorkflowCannotCancelAConfirmedOrderAndOnlyItsOwnTokenReachesTheFamily() throws Exception {
+        String popcorn = publishedProduct("Flow order workflow confirmed", 10);
+        String user = newClient();
+        String reservation = UUID.randomUUID().toString();
+        String body = "{\"userId\":\"" + user + "\"," + order(reservation, line("PRODUCT", popcorn, 2)).substring(1);
+        String id = MAPPER.readTree(send(HttpMethod.POST, "/internal/workflow/orders", workflow(),
+                "saga-0003:place-order", body).getBody()).get("id").asText();
+        deliver(reservation, "confirm", newEvent());
+
+        assertEquals(HttpStatus.CONFLICT, send(HttpMethod.POST, "/internal/workflow/orders/" + id + "/cancel",
+                workflow(), null, null).getStatusCode());
+        assertEquals("CONFIRMED", statusOf(id));
+        assertEquals(HttpStatus.FORBIDDEN, send(HttpMethod.POST, "/internal/workflow/orders", worker(),
+                "saga-0004:place-order", body).getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN, send(HttpMethod.POST, "/internal/workflow/orders", clientToken(user),
+                "saga-0005:place-order", body).getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN, send(HttpMethod.POST, "/internal/orders/expire", workflow(), null, null)
+                .getStatusCode());
     }
 
     private String statusOf(String orderId) {
