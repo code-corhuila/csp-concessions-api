@@ -22,6 +22,12 @@ public interface OrderUseCases {
     /** Cancels an order of the user and releases its stock once; cancelling a cancelled order changes nothing. */
     void cancel(UUID orderId, UUID userId);
 
+    /**
+     * Cancels the order of any user for the workflow (ADR-069) and returns it: the stock is released once and a
+     * cancelled order is returned as it is. A confirmed order is an invalid transition.
+     */
+    ConcessionOrder cancelForWorkflow(UUID orderId);
+
     /** The reservation was confirmed: confirms its order, if it has one. Repeating it changes nothing. */
     void confirmByReservation(UUID reservationId);
 
