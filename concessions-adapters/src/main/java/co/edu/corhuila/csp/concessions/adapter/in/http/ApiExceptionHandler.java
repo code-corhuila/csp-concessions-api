@@ -9,6 +9,7 @@ import co.edu.corhuila.csp.concessions.domain.model.InvalidProductException;
 import co.edu.corhuila.csp.concessions.domain.model.InsufficientStockException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStockMovementException;
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import co.edu.corhuila.csp.concessions.domain.model.OrderItemUnavailableException;
 import co.edu.corhuila.csp.concessions.domain.model.OrderNotFoundException;
 import co.edu.corhuila.csp.concessions.domain.model.ProductNotFoundException;
@@ -135,6 +136,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(OrderItemUnavailableException.class)
     ResponseEntity<ErrorResponse> orderItemUnavailable(OrderItemUnavailableException exception) {
         return answer(HttpStatus.UNPROCESSABLE_ENTITY, "BUSINESS_RULE_VIOLATION", exception.getMessage(), null);
+    }
+
+    /** 409: another product or combo that is not inactive already has the name. */
+    @ExceptionHandler(NameInUseException.class)
+    ResponseEntity<ErrorResponse> nameInUse(NameInUseException exception) {
+        return answer(HttpStatus.CONFLICT, "CONFLICT", exception.getMessage(), null);
     }
 
     /** 409: the reservation already has a live order. */

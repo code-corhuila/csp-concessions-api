@@ -22,6 +22,7 @@ import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConfli
 import co.edu.corhuila.csp.concessions.application.port.out.ProductPage;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidProductException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStatusTransitionException;
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import co.edu.corhuila.csp.concessions.domain.model.Product;
 import co.edu.corhuila.csp.concessions.domain.model.ProductNotFoundException;
 import co.edu.corhuila.csp.concessions.domain.model.ProductStatus;
@@ -167,6 +168,28 @@ class ProductControllerTest {
         when(useCases.create(any(), any())).thenThrow(new IdempotencyKeyConflictException());
 
         mockMvc.perform(create(asAdmin(post("/products")), BODY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("CONFLICT"));
+    }
+
+    @Test
+    void aNameAlreadyInUseIsA409WithTheErrorEnvelope() throws Exception {
+        when(useCases.create(any(), any())).thenThrow(new NameInUseException("a product with that name already exists"));
+
+        mockMvc.perform(create(asAdmin(post("/products")), BODY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("CONFLICT"))
+                .andExpect(jsonPath("$.message").value("a product with that name already exists"));
+    }
+
+    @Test
+    void reactivatingAProductWhoseNameIsInUseIsA409() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(useCases.changeStatus(id, ProductStatus.PUBLISHED))
+                .thenThrow(new NameInUseException("a product with that name already exists"));
+
+        mockMvc.perform(asAdmin(patch("/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", KEY).content("{\"status\":\"PUBLISHED\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("CONFLICT"));
     }
