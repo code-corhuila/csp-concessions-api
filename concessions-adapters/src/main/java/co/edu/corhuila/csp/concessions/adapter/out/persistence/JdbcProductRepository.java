@@ -4,6 +4,7 @@ import co.edu.corhuila.csp.concessions.application.port.out.CreateProductResult;
 import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConflictException;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductPage;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductRepository;
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import co.edu.corhuila.csp.concessions.domain.model.Product;
 import co.edu.corhuila.csp.concessions.domain.model.ProductStatus;
 import java.sql.ResultSet;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -90,12 +92,16 @@ public class JdbcProductRepository implements ProductRepository {
 
     @Override
     public Product save(Product product) {
-        jdbc.update("""
-                UPDATE concessions.product
-                SET name = ?, description = ?, category = ?, price = ?, available_stock = ?, status = ?, updated_at = ?
-                WHERE id = ?""",
-                product.name(), product.description(), product.category(), product.price(),
-                product.availableStock(), product.status().name(), at(product), product.id());
+        try {
+            jdbc.update("""
+                    UPDATE concessions.product
+                    SET name = ?, description = ?, category = ?, price = ?, available_stock = ?, status = ?, updated_at = ?
+                    WHERE id = ?""",
+                    product.name(), product.description(), product.category(), product.price(),
+                    product.availableStock(), product.status().name(), at(product), product.id());
+        } catch (DuplicateKeyException activeName) {
+            throw nameInUse(activeName);
+        }
         return product;
     }
 
@@ -115,9 +121,20 @@ public class JdbcProductRepository implements ProductRepository {
     }
 
     private void insert(Product product) {
-        jdbc.update(INSERT_PRODUCT, product.id(), product.name(), product.description(), product.category(),
-                product.price(), product.availableStock(), product.status().name(),
-                OffsetDateTime.ofInstant(product.createdAt(), ZoneOffset.UTC), at(product));
+        try {
+            jdbc.update(INSERT_PRODUCT, product.id(), product.name(), product.description(), product.category(),
+                    product.price(), product.availableStock(), product.status().name(),
+                    OffsetDateTime.ofInstant(product.createdAt(), ZoneOffset.UTC), at(product));
+        } catch (DuplicateKeyException activeName) {
+            throw nameInUse(activeName);
+        }
+    }
+
+    /** The only unique index of the table besides the key is the active-name rule of {@code uk_product_name_active}. */
+    private static NameInUseException nameInUse(DuplicateKeyException cause) {
+        NameInUseException exception = new NameInUseException("a product with that name already exists");
+        exception.initCause(cause);
+        return exception;
     }
 
     private static OffsetDateTime at(Product product) {

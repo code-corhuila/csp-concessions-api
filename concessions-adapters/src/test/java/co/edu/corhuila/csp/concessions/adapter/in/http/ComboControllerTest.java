@@ -25,6 +25,7 @@ import co.edu.corhuila.csp.concessions.domain.model.ComboComponentException;
 import co.edu.corhuila.csp.concessions.domain.model.ComboItem;
 import co.edu.corhuila.csp.concessions.domain.model.ComboNotFoundException;
 import co.edu.corhuila.csp.concessions.domain.model.ComboStatus;
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidComboException;
 import co.edu.corhuila.csp.concessions.domain.model.InvalidStatusTransitionException;
 import java.time.Instant;
@@ -173,6 +174,26 @@ class ComboControllerTest {
         when(useCases.create(any(), eq(KEY))).thenThrow(new IdempotencyKeyConflictException());
 
         mockMvc.perform(withBody(asAdmin(post("/combos")), BODY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("CONFLICT"));
+    }
+
+    @Test
+    void aNameAlreadyInUseIsA409WithTheErrorEnvelope() throws Exception {
+        when(useCases.create(any(), eq(KEY))).thenThrow(new NameInUseException("a combo with that name already exists"));
+
+        mockMvc.perform(withBody(asAdmin(post("/combos")), BODY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("CONFLICT"))
+                .andExpect(jsonPath("$.message").value("a combo with that name already exists"));
+    }
+
+    @Test
+    void reactivatingAComboWhoseNameIsInUseIsA409() throws Exception {
+        when(useCases.changeStatus(COMBO_ID, ComboStatus.PUBLISHED))
+                .thenThrow(new NameInUseException("a combo with that name already exists"));
+
+        mockMvc.perform(withBody(asAdmin(patch("/combos/" + COMBO_ID)), "{\"status\":\"PUBLISHED\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("CONFLICT"));
     }
