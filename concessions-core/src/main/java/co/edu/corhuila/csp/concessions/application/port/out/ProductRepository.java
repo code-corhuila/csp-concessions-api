@@ -1,5 +1,6 @@
 package co.edu.corhuila.csp.concessions.application.port.out;
 
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import co.edu.corhuila.csp.concessions.domain.model.Product;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,11 +11,12 @@ public interface ProductRepository {
     /**
      * Inserts the product together with its idempotency key in one transaction. When the key is
      * already stored with the same request hash, nothing is written and the original product is
-     * returned as a replay; with another hash it throws {@link IdempotencyKeyConflictException}.
+     * returned as a replay; with another hash it throws {@link IdempotencyKeyConflictException}. A name that another product
+     * that is not inactive already has throws {@link NameInUseException}.
      */
     CreateProductResult create(Product product, String idempotencyKey, String requestHash);
 
-    /** Updates an existing product and returns what was stored. */
+    /** Updates an existing product and returns what was stored; reactivating a name now in use is a {@link NameInUseException}. */
     Product save(Product product);
 
     Optional<Product> findById(UUID id);

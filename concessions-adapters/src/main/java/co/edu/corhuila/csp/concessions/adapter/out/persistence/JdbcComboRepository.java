@@ -7,6 +7,7 @@ import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConfli
 import co.edu.corhuila.csp.concessions.domain.model.Combo;
 import co.edu.corhuila.csp.concessions.domain.model.ComboItem;
 import co.edu.corhuila.csp.concessions.domain.model.ComboStatus;
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -71,8 +73,7 @@ public class JdbcComboRepository implements ComboRepository {
             if (earlier.isPresent()) {
                 return earlier.get();
             }
-            jdbc.update(INSERT_COMBO, combo.id(), combo.name(), combo.description(), combo.price(),
-                    combo.status().name(), OffsetDateTime.ofInstant(combo.createdAt(), ZoneOffset.UTC), at(combo));
+            insert(combo);
             jdbc.batchUpdate(INSERT_ITEM, combo.items(), combo.items().size(), (statement, item) -> {
                 statement.setObject(1, combo.id());
                 statement.setObject(2, item.productId());
@@ -100,11 +101,31 @@ public class JdbcComboRepository implements ComboRepository {
         return Optional.of(new CreateComboResult(original, true));
     }
 
+    private void insert(Combo combo) {
+        try {
+            jdbc.update(INSERT_COMBO, combo.id(), combo.name(), combo.description(), combo.price(),
+                    combo.status().name(), OffsetDateTime.ofInstant(combo.createdAt(), ZoneOffset.UTC), at(combo));
+        } catch (DuplicateKeyException activeName) {
+            throw nameInUse(activeName);
+        }
+    }
+
     @Override
     public Combo save(Combo combo) {
-        jdbc.update("UPDATE concessions.combo SET status = ?, updated_at = ? WHERE id = ?",
-                combo.status().name(), at(combo), combo.id());
+        try {
+            jdbc.update("UPDATE concessions.combo SET status = ?, updated_at = ? WHERE id = ?",
+                    combo.status().name(), at(combo), combo.id());
+        } catch (DuplicateKeyException activeName) {
+            throw nameInUse(activeName);
+        }
         return combo;
+    }
+
+    /** The only unique index of the table is the active-name rule of {@code uk_combo_name_active}. */
+    private static NameInUseException nameInUse(DuplicateKeyException cause) {
+        NameInUseException exception = new NameInUseException("a combo with that name already exists");
+        exception.initCause(cause);
+        return exception;
     }
 
     @Override

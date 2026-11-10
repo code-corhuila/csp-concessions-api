@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import co.edu.corhuila.csp.concessions.application.port.out.CreateProductResult;
 import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConflictException;
 import co.edu.corhuila.csp.concessions.application.port.out.ProductPage;
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import co.edu.corhuila.csp.concessions.domain.model.Product;
 import co.edu.corhuila.csp.concessions.domain.model.ProductStatus;
 import com.zaxxer.hikari.HikariConfig;
@@ -116,8 +117,40 @@ class JdbcProductRepositoryTest {
     void anActiveNameCannotBeCreatedTwiceWithDifferentKeys() {
         repository.create(draft("Repo unique"), KEY, "hash-one");
 
-        assertThrows(org.springframework.dao.DuplicateKeyException.class,
+        assertThrows(NameInUseException.class,
                 () -> repository.create(draft("repo UNIQUE"), "99999999-2222-3333-4444-555555555555", "hash-two"));
+    }
+
+    @Test
+    void aNameCanBeReusedOnceTheEarlierProductIsInactive() {
+        Product first = draft("Repo reuse");
+        repository.create(first, KEY, "hash-one");
+        repository.save(repository.save(first.publish(NOW)).deactivate(NOW));
+
+        CreateProductResult second = repository.create(draft("Repo reuse"),
+                "99999999-2222-3333-4444-555555555555", "hash-two");
+
+        assertFalse(second.replayed());
+    }
+
+    @Test
+    void aFailedCreateBecauseOfTheNameLeavesNoKeyBehind() {
+        repository.create(draft("Repo keyless"), KEY, "hash-one");
+        String otherKey = "99999999-2222-3333-4444-555555555555";
+
+        assertThrows(NameInUseException.class, () -> repository.create(draft("Repo keyless"), otherKey, "hash-two"));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM concessions.product_idempotency_key WHERE \"key\" = ?", Integer.class, otherKey));
+    }
+
+    @Test
+    void reactivatingAProductWhoseNameWasTakenMeanwhileIsANameInUse() {
+        Product first = draft("Repo taken");
+        repository.create(first, KEY, "hash-one");
+        Product inactive = repository.save(repository.save(first.publish(NOW)).deactivate(NOW));
+        repository.create(draft("Repo taken"), "99999999-2222-3333-4444-555555555555", "hash-two");
+
+        assertThrows(NameInUseException.class, () -> repository.save(inactive.publish(NOW)));
     }
 
     @Test
