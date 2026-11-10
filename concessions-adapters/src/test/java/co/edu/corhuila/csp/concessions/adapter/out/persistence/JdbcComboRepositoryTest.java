@@ -11,6 +11,7 @@ import co.edu.corhuila.csp.concessions.application.port.out.IdempotencyKeyConfli
 import co.edu.corhuila.csp.concessions.domain.model.Combo;
 import co.edu.corhuila.csp.concessions.domain.model.ComboItem;
 import co.edu.corhuila.csp.concessions.domain.model.ComboStatus;
+import co.edu.corhuila.csp.concessions.domain.model.NameInUseException;
 import co.edu.corhuila.csp.concessions.domain.model.Product;
 import co.edu.corhuila.csp.concessions.domain.model.ProductStatus;
 import com.zaxxer.hikari.HikariConfig;
@@ -147,8 +148,35 @@ class JdbcComboRepositoryTest {
     void anActiveNameCannotBeCreatedTwiceWithDifferentKeys() {
         repository.create(draft("Combo repo unique"), KEY, "hash-one");
 
-        assertThrows(org.springframework.dao.DuplicateKeyException.class,
+        assertThrows(NameInUseException.class,
                 () -> repository.create(draft("combo REPO unique"), "bbbbbbbb-2222-3333-4444-555555555555", "hash-two"));
+    }
+
+    @Test
+    void aNameCanBeReusedOnceTheEarlierComboIsInactive() {
+        Combo first = draft("Combo repo reuse");
+        repository.create(first, KEY, "hash-one");
+        repository.save(withStatus(first, ComboStatus.INACTIVE));
+
+        CreateComboResult second = repository.create(draft("Combo repo reuse"),
+                "bbbbbbbb-2222-3333-4444-555555555555", "hash-two");
+
+        assertFalse(second.replayed());
+    }
+
+    @Test
+    void reactivatingAComboWhoseNameWasTakenMeanwhileIsANameInUse() {
+        Combo first = draft("Combo repo taken");
+        repository.create(first, KEY, "hash-one");
+        Combo inactive = repository.save(withStatus(first, ComboStatus.INACTIVE));
+        repository.create(draft("Combo repo taken"), "bbbbbbbb-2222-3333-4444-555555555555", "hash-two");
+
+        assertThrows(NameInUseException.class, () -> repository.save(withStatus(inactive, ComboStatus.PUBLISHED)));
+    }
+
+    private static Combo withStatus(Combo combo, ComboStatus status) {
+        return new Combo(combo.id(), combo.name(), combo.description(), combo.price(), combo.items(), status,
+                combo.createdAt(), NOW);
     }
 
     @Test
