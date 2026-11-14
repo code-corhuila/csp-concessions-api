@@ -1,0 +1,40 @@
+# This service only. csp-infra-postgres includes this file to compose the platform.
+name: csp-concessions-api
+
+services:
+  concessions-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PORT: "8085"
+      # Public key every token is validated with (Norma 5.3.7); csp-infra-postgres mounts the PEM file.
+      # The service refuses to start without one of the two.
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_PUBLIC_KEY_FILE: ${JWT_PUBLIC_KEY_FILE:-}
+      # Subjects of the service tokens, one list per family of internal routes (ADR-069). The defaults are the
+      # filter's own: the worker for /internal/orders/ and /internal/maintenance/, nobody for /internal/workflow/.
+      SERVICE_SUBJECTS: ${SERVICE_SUBJECTS:-csp-worker}
+      WORKFLOW_SUBJECTS: ${WORKFLOW_SUBJECTS:-}
+      # Database of this domain (Annex J.5). The platform shares one environment file, where SPRING_DATASOURCE_* already
+      # belong to another service, so the login of this one has its own names and is mapped here. Compose refuses to
+      # start without the password, so a missing value is reported by name instead of failing inside the JVM.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:?set PG_DATABASE}
+      SPRING_DATASOURCE_USERNAME: ${CONCESSIONS_APP_USER:-concessions_app}
+      SPRING_DATASOURCE_PASSWORD: ${CONCESSIONS_APP_PASSWORD:?set CONCESSIONS_APP_PASSWORD}
+    # expose, not ports: only the gateway is reachable from the host.
+    expose: ["8085"]
+    # /health has no dependencies; the base path is the context-path of application.yml.
+    # The JRE image ships curl.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8085/api/v1/concessions/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+    networks: [platform]
+
+networks:
+  platform:
+    name: platform
+    external: true
